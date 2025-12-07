@@ -28,11 +28,13 @@ const COLORS = {
   deadStateStroke: '#3a3a42',
   deadText: '#a0a0a8',
   text: '#f5f5f7',
+  textDark: '#1a1a1a',
   textMuted: '#6a6a75',
   transition: '#6a6a7a',
   transitionText: '#d0d0d8',
   transitionMuted: '#3a3a42',
-  highlight: '#fbbf24'
+  highlight: '#fbbf24',
+  highlightDim: '#b08a1a'
 };
 
 /** Font stack for canvas text */
@@ -40,9 +42,16 @@ const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, sans-serif';
 
 /**
  * Cytoscape stylesheet for NFA visualization
+ * 
+ * Style priority (later rules override earlier):
+ * 1. Base node/edge styles
+ * 2. State type styles (start, accept, dead)
+ * 3. Combination styles (start+accept)
+ * 4. Trace highlight styles (highlighted, highlighted-final)
+ * 5. Highlight + state type combinations
  */
 const CYTOSCAPE_STYLE = [
-  // Base node style
+  // ========== BASE STYLES ==========
   {
     selector: 'node',
     style: {
@@ -59,41 +68,6 @@ const CYTOSCAPE_STYLE = [
       'height': 50
     }
   },
-  // Start state
-  {
-    selector: 'node.start',
-    style: {
-      'background-color': COLORS.startState,
-      'border-color': COLORS.startState
-    }
-  },
-  // Accept state (double border effect)
-  {
-    selector: 'node.accept',
-    style: {
-      'border-width': 4,
-      'border-color': COLORS.acceptState,
-      'border-style': 'double'
-    }
-  },
-  // Start + Accept state
-  {
-    selector: 'node.start.accept',
-    style: {
-      'background-color': COLORS.startState,
-      'border-color': COLORS.acceptState
-    }
-  },
-  // Highlighted state
-  {
-    selector: 'node.highlighted',
-    style: {
-      'border-color': COLORS.highlight,
-      'border-width': 4,
-      'background-opacity': 1
-    }
-  },
-  // Base edge style
   {
     selector: 'edge',
     style: {
@@ -112,7 +86,6 @@ const CYTOSCAPE_STYLE = [
       'text-rotation': 'autorotate'
     }
   },
-  // Self-loop edges
   {
     selector: 'edge.loop',
     style: {
@@ -121,6 +94,75 @@ const CYTOSCAPE_STYLE = [
       'control-point-weights': [0.5],
       'loop-direction': '-45deg',
       'loop-sweep': '90deg'
+    }
+  },
+
+  // ========== STATE TYPE STYLES ==========
+  // Start state: blue fill
+  {
+    selector: 'node.start',
+    style: {
+      'background-color': COLORS.startState,
+      'border-color': COLORS.startState
+    }
+  },
+  // Accept state: green double border
+  {
+    selector: 'node.accept',
+    style: {
+      'border-width': 4,
+      'border-color': COLORS.acceptState,
+      'border-style': 'double'
+    }
+  },
+  // Start + Accept: blue fill, green double border
+  {
+    selector: 'node.start.accept',
+    style: {
+      'background-color': COLORS.startState,
+      'border-color': COLORS.acceptState
+    }
+  },
+  // Dead state: dark, dashed border
+  {
+    selector: 'node.dead',
+    style: {
+      'background-color': COLORS.deadState,
+      'border-color': COLORS.deadStateStroke,
+      'border-style': 'dashed',
+      'color': COLORS.deadText
+    }
+  },
+  // Dead edges: muted, dashed
+  {
+    selector: 'edge.dead',
+    style: {
+      'line-color': COLORS.transitionMuted,
+      'target-arrow-color': COLORS.transitionMuted,
+      'line-style': 'dashed',
+      'color': COLORS.deadText
+    }
+  },
+
+  // ========== TRACE HIGHLIGHT STYLES ==========
+  // Visited state: yellow border
+  {
+    selector: 'node.highlighted',
+    style: {
+      'border-color': COLORS.highlightDim,
+      'border-width': 4,
+      'border-style': 'solid'
+    }
+  },
+  // Final state: yellow fill
+  {
+    selector: 'node.highlighted-final',
+    style: {
+      'background-color': COLORS.highlight,
+      'border-color': COLORS.highlight,
+      'border-width': 4,
+      'border-style': 'solid',
+      'color': COLORS.textDark
     }
   },
   // Highlighted edge
@@ -132,7 +174,51 @@ const CYTOSCAPE_STYLE = [
       'width': 3
     }
   },
-  // Start arrow (pseudo-edge from invisible node)
+
+  // ========== HIGHLIGHT + STATE TYPE COMBINATIONS ==========
+  // Accept + final: keep green double border
+  {
+    selector: 'node.accept.highlighted-final',
+    style: {
+      'background-color': COLORS.highlight,
+      'border-color': COLORS.acceptState,
+      'border-width': 5,
+      'border-style': 'double',
+      'color': COLORS.textDark
+    }
+  },
+  // Dead + visited: keep dashed border
+  {
+    selector: 'node.dead.highlighted',
+    style: {
+      'border-color': COLORS.highlightDim,
+      'border-width': 4,
+      'border-style': 'dashed'
+    }
+  },
+  // Dead + final: yellow fill, dashed border
+  {
+    selector: 'node.dead.highlighted-final',
+    style: {
+      'background-color': COLORS.highlight,
+      'border-color': COLORS.highlight,
+      'border-width': 4,
+      'border-style': 'dashed',
+      'color': COLORS.textDark
+    }
+  },
+  // Dead + highlighted edge: keep dashed
+  {
+    selector: 'edge.dead.highlighted',
+    style: {
+      'line-color': COLORS.highlight,
+      'target-arrow-color': COLORS.highlight,
+      'width': 3
+    }
+  },
+
+  // ========== SPECIAL ELEMENTS ==========
+  // Start arrow marker (invisible node)
   {
     selector: 'node.start-marker',
     style: {
@@ -142,6 +228,7 @@ const CYTOSCAPE_STYLE = [
       'border-width': 0
     }
   },
+  // Start arrow edge
   {
     selector: 'edge.start-arrow',
     style: {
@@ -152,27 +239,7 @@ const CYTOSCAPE_STYLE = [
       'curve-style': 'straight'
     }
   },
-  // Dead state (cannot reach accept)
-  {
-    selector: 'node.dead',
-    style: {
-      'background-color': COLORS.deadState,
-      'border-color': COLORS.deadStateStroke,
-      'border-style': 'dashed',
-      'color': COLORS.deadText
-    }
-  },
-  // Edges from/to dead states
-  {
-    selector: 'edge.dead',
-    style: {
-      'line-color': COLORS.transitionMuted,
-      'target-arrow-color': COLORS.transitionMuted,
-      'line-style': 'dashed',
-      'color': COLORS.deadText
-    }
-  },
-  // Hidden elements (for toggle without layout change)
+  // Hidden elements (for dead state toggle)
   {
     selector: '.hidden',
     style: {
@@ -505,20 +572,63 @@ export class NFAVisualizer {
   }
 
   /**
-   * Highlight states from a trace
+   * Highlight all states and edges visited during a trace
    * @param {Array<{states: number[]}>} trace
    */
   highlightTrace(trace) {
     if (!this.cy) return;
 
     // Clear previous highlights
-    this.cy.elements().removeClass('highlighted');
+    this.cy.elements().removeClass('highlighted highlighted-final');
 
-    if (trace.length > 0) {
-      const lastStep = trace[trace.length - 1];
-      lastStep.states.forEach(stateId => {
-        this.cy.$(`#s${stateId}`).addClass('highlighted');
-      });
+    // Track visited states at each step and transitions taken
+    const visitedStates = new Set();
+    const visitedEdges = new Set();
+
+    for (let i = 0; i < trace.length; i++) {
+      const step = trace[i];
+      for (const stateId of step.states) {
+        visitedStates.add(stateId);
+      }
+
+      // Track edges from previous step to current step
+      if (i > 0) {
+        const prevStates = trace[i - 1].states;
+        for (const fromId of prevStates) {
+          for (const toId of step.states) {
+            visitedEdges.add(`${fromId}-${toId}`);
+          }
+        }
+      }
+    }
+
+    // Get final states
+    const finalStates = trace.length > 0
+      ? new Set(trace[trace.length - 1].states)
+      : new Set();
+
+    // Highlight visited states
+    for (const stateId of visitedStates) {
+      const node = this.cy.$(`#s${stateId}`);
+      if (finalStates.has(stateId)) {
+        node.addClass('highlighted-final');
+      } else {
+        node.addClass('highlighted');
+      }
+    }
+
+    // Highlight visited edges
+    for (const edgeKey of visitedEdges) {
+      this.cy.$(`#e${edgeKey}`).addClass('highlighted');
+    }
+  }
+
+  /**
+   * Clear all trace highlighting
+   */
+  clearHighlight() {
+    if (this.cy) {
+      this.cy.elements().removeClass('highlighted highlighted-final');
     }
   }
 

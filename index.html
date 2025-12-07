@@ -134,10 +134,15 @@ function accept(state) {
       </div>
 
       <div class="test-section">
-        <h3>Test Input</h3>
+        <div class="section-header">
+          <h3>Test Input</h3>
+          <label class="toggle-label toggle-small">
+            <input type="checkbox" id="show-trace-toggle" checked>
+            <span>Trace</span>
+          </label>
+        </div>
         <div class="test-input-row">
-          <input type="text" id="test-input" placeholder="1, 2, 3" value="1, 2">
-          <button id="test-btn">Run</button>
+          <input type="text" id="test-input" value="12">
         </div>
         <div id="test-result" class="test-result"></div>
       </div>

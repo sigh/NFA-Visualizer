@@ -50,11 +50,11 @@ const elements = {
 
   // Actions
   buildBtn: document.getElementById('build-btn'),
-  testBtn: document.getElementById('test-btn'),
 
   // Output
   errorDisplay: document.getElementById('error-display'),
   testInput: document.getElementById('test-input'),
+  showTraceToggle: document.getElementById('show-trace-toggle'),
   testResult: document.getElementById('test-result'),
   cyContainer: document.getElementById('cy-container'),
   emptyState: document.getElementById('empty-state'),
@@ -91,10 +91,15 @@ function init() {
   // Set up event listeners
   elements.unifiedToggle.addEventListener('change', handleModeToggle);
   elements.buildBtn.addEventListener('click', handleBuild);
-  elements.testBtn.addEventListener('click', handleTest);
-  elements.testInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') handleTest();
+
+  // Auto-update test on input change
+  elements.testInput.addEventListener('input', () => {
+    saveToStorage();
+    updateTestResult();
   });
+
+  // Show/hide trace toggle
+  elements.showTraceToggle.addEventListener('change', updateTestResult);
 
   // Save inputs on change
   elements.symbolsInput.addEventListener('input', saveToStorage);
@@ -102,7 +107,6 @@ function init() {
   elements.transitionInput.addEventListener('input', saveToStorage);
   elements.acceptInput.addEventListener('input', saveToStorage);
   elements.unifiedCodeInput.addEventListener('input', saveToStorage);
-  elements.testInput.addEventListener('input', saveToStorage);
 
   // Initialize visualizer
   visualizer = new NFAVisualizer(elements.cyContainer);
@@ -283,9 +287,8 @@ function showResults() {
   // Render visualization
   visualizer.render(currentNFA);
 
-  // Clear previous test result
-  elements.testResult.textContent = '';
-  elements.testResult.className = 'test-result';
+  // Run test with current input
+  updateTestResult();
 }
 
 /**
@@ -324,45 +327,46 @@ function hideResults() {
 // ============================================
 
 /**
- * Test the current NFA with the input sequence
+ * Update test result and trace highlighting
  */
-function handleTest() {
+function updateTestResult() {
   if (!currentNFA) {
-    showError('Build NFA first');
+    elements.testResult.textContent = '';
+    elements.testResult.className = 'test-result';
+    visualizer.clearHighlight();
     return;
   }
 
-  const inputStr = elements.testInput.value.trim();
-  if (!inputStr) {
-    showTestResult('Enter an input sequence', false);
-    return;
-  }
+  const inputStr = elements.testInput.value;
 
   try {
     const sequence = parseInputSequence(inputStr);
     const result = currentNFA.run(sequence);
 
     displayTestResult(result, sequence);
-    visualizer.highlightTrace(result.trace);
+
+    // Update trace highlighting based on toggle
+    if (elements.showTraceToggle.checked) {
+      visualizer.highlightTrace(result.trace);
+    } else {
+      visualizer.clearHighlight();
+    }
 
   } catch (e) {
     showTestResult(`Error: ${e.message}`, false);
+    visualizer.clearHighlight();
   }
 }
 
 /**
- * Parse user input string into a sequence of values
+ * Parse user input string into a sequence of symbols.
+ * Each character is treated as a separate symbol.
+ * Digits are converted to numbers for compatibility.
  */
 function parseInputSequence(inputStr) {
-  return inputStr.split(',').map(s => {
-    const val = s.trim();
-
-    // Try parsing as number first
-    const num = Number(val);
-    if (!isNaN(num)) return num;
-
-    // Otherwise treat as string, stripping quotes if present
-    return val.replace(/^["']|["']$/g, '');
+  return [...inputStr].map(char => {
+    const num = Number(char);
+    return !isNaN(num) ? num : char;
   });
 }
 
@@ -371,10 +375,11 @@ function parseInputSequence(inputStr) {
  */
 function displayTestResult(result, sequence) {
   const lastStep = result.trace[result.trace.length - 1];
+  const inputDisplay = sequence.length > 0 ? sequence.join('') : '(empty)';
 
   if (result.accepted) {
     showTestResult(
-      `✓ ACCEPTED\nInput: [${sequence.join(', ')}]\nFinal states: ${lastStep.states.length}`,
+      `✓ ACCEPTED\nInput: ${inputDisplay}\nFinal states: ${lastStep.states.length}`,
       true
     );
   } else {
@@ -382,7 +387,7 @@ function displayTestResult(result, sequence) {
       ? 'No reachable states (dead end)'
       : 'No accepting state reached';
     showTestResult(
-      `✗ REJECTED\nInput: [${sequence.join(', ')}]\nReason: ${reason}`,
+      `✗ REJECTED\nInput: ${inputDisplay}\nReason: ${reason}`,
       false
     );
   }
