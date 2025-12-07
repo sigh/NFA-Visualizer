@@ -31,12 +31,6 @@
   --color-primary-hover: #5088ff;
   --color-success: #4ade80;
   --color-error: #f87171;
-  --color-warning: #fbbf24;
-
-  /* State colors for NFA */
-  --color-state-start: #60a5fa;
-  --color-state-accept: #4ade80;
-  --color-state-normal: #8b8b9a;
 
   /* Spacing */
   --space-xs: 4px;
@@ -165,18 +159,10 @@ header {
   background: var(--color-bg);
   position: relative;
 
-  #nfa-canvas-container {
+  #cy-container {
     flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-  }
-
-  #nfa-canvas {
-    display: block;
-    max-width: 100%;
-    max-height: 100%;
+    width: 100%;
+    min-height: 400px;
   }
 
   .empty-state {

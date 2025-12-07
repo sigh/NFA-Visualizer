@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NFA Visualizer</title>
   <link rel="stylesheet" href="css/style.css">
+  <script src="lib/cytoscape.min.js"></script>
 </head>
 
 <body>
@@ -86,9 +87,7 @@ function accept(state) {
       <div class="panel-header">
         <h2>Visualization</h2>
       </div>
-      <div id="nfa-canvas-container">
-        <canvas id="nfa-canvas"></canvas>
-      </div>
+      <div id="cy-container"></div>
       <p class="empty-state" id="empty-state">Build an NFA to see the visualization</p>
     </section>
 
@@ -115,7 +114,7 @@ function accept(state) {
         </div>
       </div>
 
-      <div id="test-section" class="test-section">
+      <div class="test-section">
         <h3>Test Input</h3>
         <div class="test-input-row">
           <input type="text" id="test-input" placeholder="1, 2, 3" value="1, 2">

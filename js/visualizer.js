@@ -1,10 +1,10 @@
 /**
- * NFA Visualizer - Canvas-based State Diagram Renderer
+ * NFA Visualizer - Cytoscape-based State Diagram Renderer
  *
- * Renders NFAs as interactive state diagrams with:
- * - Automatic layout using force-directed positioning
+ * Renders NFAs as interactive state diagrams using Cytoscape.js with:
+ * - Automatic layout (breadthfirst for small graphs, cose for larger)
  * - Visual distinction for start/accept states
- * - Transition arrows with labels
+ * - Curved edges for parallel transitions
  * - Self-loop rendering
  * - Trace highlighting
  *
@@ -16,7 +16,7 @@
 // ============================================
 
 /**
- * Visual theme colors - High Contrast - synced with CSS variables
+ * Visual theme colors - synced with CSS variables
  */
 const COLORS = {
   background: '#0f0f12',
@@ -25,31 +25,129 @@ const COLORS = {
   startState: '#60a5fa',
   acceptState: '#4ade80',
   text: '#f5f5f7',
-  textMuted: '#a0a0b0',
   transition: '#6a6a7a',
   transitionText: '#d0d0d8',
-  highlight: '#fbbf24',
-  highlightState: 'rgba(251, 191, 36, 0.3)'
+  highlight: '#fbbf24'
 };
 
-/** Base font for canvas text */
-const FONT = '-apple-system, BlinkMacSystemFont, sans-serif';
+/** Font stack for canvas text */
+const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, sans-serif';
 
 /**
- * Layout and sizing constants
+ * Cytoscape stylesheet for NFA visualization
  */
-const LAYOUT = {
-  stateRadius: 30,
-  padding: 60,
-  canvasHeight: 400,
-  arrowSize: 8,
-  selfLoopRadius: 20,
-  selfLoopStartAngle: 0.2 * Math.PI,
-  selfLoopEndAngle: 0.8 * Math.PI,
-  startArrowLength: 30,
-  minStateDistance: 90,
-  forceIterations: 50
-};
+const CYTOSCAPE_STYLE = [
+  // Base node style
+  {
+    selector: 'node',
+    style: {
+      'background-color': COLORS.state,
+      'border-color': COLORS.stateStroke,
+      'border-width': 2,
+      'label': 'data(label)',
+      'text-valign': 'center',
+      'text-halign': 'center',
+      'color': COLORS.text,
+      'font-size': '12px',
+      'font-family': FONT_FAMILY,
+      'width': 50,
+      'height': 50
+    }
+  },
+  // Start state
+  {
+    selector: 'node.start',
+    style: {
+      'background-color': COLORS.startState,
+      'border-color': COLORS.startState
+    }
+  },
+  // Accept state (double border effect)
+  {
+    selector: 'node.accept',
+    style: {
+      'border-width': 4,
+      'border-color': COLORS.acceptState,
+      'border-style': 'double'
+    }
+  },
+  // Start + Accept state
+  {
+    selector: 'node.start.accept',
+    style: {
+      'background-color': COLORS.startState,
+      'border-color': COLORS.acceptState
+    }
+  },
+  // Highlighted state
+  {
+    selector: 'node.highlighted',
+    style: {
+      'border-color': COLORS.highlight,
+      'border-width': 4,
+      'background-opacity': 1
+    }
+  },
+  // Base edge style
+  {
+    selector: 'edge',
+    style: {
+      'width': 2,
+      'line-color': COLORS.transition,
+      'target-arrow-color': COLORS.transition,
+      'target-arrow-shape': 'triangle',
+      'curve-style': 'bezier',
+      'label': 'data(label)',
+      'font-size': '11px',
+      'font-family': FONT_FAMILY,
+      'color': COLORS.transitionText,
+      'text-background-color': COLORS.background,
+      'text-background-opacity': 1,
+      'text-background-padding': '3px',
+      'text-rotation': 'autorotate'
+    }
+  },
+  // Self-loop edges
+  {
+    selector: 'edge.loop',
+    style: {
+      'curve-style': 'unbundled-bezier',
+      'control-point-distances': [40],
+      'control-point-weights': [0.5],
+      'loop-direction': '-45deg',
+      'loop-sweep': '90deg'
+    }
+  },
+  // Highlighted edge
+  {
+    selector: 'edge.highlighted',
+    style: {
+      'line-color': COLORS.highlight,
+      'target-arrow-color': COLORS.highlight,
+      'width': 3
+    }
+  },
+  // Start arrow (pseudo-edge from invisible node)
+  {
+    selector: 'node.start-marker',
+    style: {
+      'width': 1,
+      'height': 1,
+      'background-opacity': 0,
+      'border-width': 0
+    }
+  },
+  {
+    selector: 'edge.start-arrow',
+    style: {
+      'width': 2,
+      'line-color': COLORS.startState,
+      'target-arrow-color': COLORS.startState,
+      'target-arrow-shape': 'triangle',
+      'curve-style': 'straight'
+    }
+  }
+];
 
 // ============================================
 // NFAVisualizer Class
@@ -57,24 +155,12 @@ const LAYOUT = {
 
 export class NFAVisualizer {
   /**
-   * @param {HTMLCanvasElement} canvas
+   * @param {HTMLElement} container - The container element for Cytoscape
    */
-  constructor(canvas) {
-    this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
-
-    /** @type {import('./nfa.js').NFA|null} */
+  constructor(container) {
+    this.container = container;
+    this.cy = null;
     this.nfa = null;
-
-    /** @type {Map<number, {x: number, y: number}>} */
-    this.statePositions = new Map();
-
-    /** @type {Set<number>} */
-    this.highlightedStates = new Set();
-
-    // Computed dimensions
-    this.width = 0;
-    this.height = LAYOUT.canvasHeight;
   }
 
   /**
@@ -83,332 +169,148 @@ export class NFAVisualizer {
    */
   render(nfa) {
     this.nfa = nfa;
-    this.setupCanvas();
-    this.calculateLayout();
-    this.draw();
-  }
+    const elements = this.buildElements();
 
-  /**
-   * Highlight states from a trace (typically the final states)
-   * @param {Array<{states: number[]}>} trace
-   */
-  highlightTrace(trace) {
-    this.highlightedStates.clear();
-
-    if (trace.length > 0) {
-      const lastStep = trace[trace.length - 1];
-      lastStep.states.forEach(stateId => {
-        this.highlightedStates.add(stateId);
-      });
+    // Destroy existing instance
+    if (this.cy) {
+      this.cy.destroy();
     }
 
-    this.draw();
+    // Create new Cytoscape instance
+    this.cy = cytoscape({
+      container: this.container,
+      elements: elements,
+      style: CYTOSCAPE_STYLE,
+      layout: this.getLayoutOptions(elements),
+      wheelSensitivity: 0.3,
+      minZoom: 0.3,
+      maxZoom: 3
+    });
+
+    // Fit to container with padding
+    this.cy.fit(50);
   }
 
   /**
-   * Clear all highlighting
+   * Build Cytoscape elements from NFA
+   * @returns {Array} Cytoscape elements array
    */
-  clearHighlight() {
-    this.highlightedStates.clear();
-    this.draw();
-  }
-
-  // ============================================
-  // Canvas Setup
-  // ============================================
-
-  /**
-   * Configure canvas dimensions for high-DPI displays
-   */
-  setupCanvas() {
-    const container = this.canvas.parentElement;
-    const rect = container.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-
-    this.canvas.width = rect.width * dpr;
-    this.canvas.height = LAYOUT.canvasHeight * dpr;
-    this.canvas.style.width = `${rect.width}px`;
-    this.canvas.style.height = `${LAYOUT.canvasHeight}px`;
-
-    this.ctx.scale(dpr, dpr);
-    this.width = rect.width;
-    this.height = LAYOUT.canvasHeight;
-  }
-
-  // ============================================
-  // Layout Calculation
-  // ============================================
-
-  /**
-   * Calculate positions for all states using a force-directed approach
-   */
-  calculateLayout() {
-    this.statePositions.clear();
-
+  buildElements() {
+    const elements = [];
     const states = this.nfa.getStateInfo();
-    if (states.length === 0) return;
+    const transitions = this.nfa.getAllTransitions();
 
-    const centerX = this.width / 2;
-    const centerY = this.height / 2;
-
-    // Single state: center it
-    if (states.length === 1) {
-      this.statePositions.set(states[0].id, { x: centerX, y: centerY });
-      return;
-    }
-
-    // Position states: start states on left, others in grid
-    this.positionStartStates(states, centerY);
-    this.positionOtherStates(states);
-
-    // Refine with force-directed algorithm
-    this.refineLayout(LAYOUT.forceIterations);
-  }
-
-  /**
-   * Position start states on the left side
-   */
-  positionStartStates(states, centerY) {
-    const startStates = states.filter(s => s.isStart);
-    const startX = LAYOUT.padding + LAYOUT.stateRadius + 20;
-
-    startStates.forEach((state, i) => {
-      const offset = (i - (startStates.length - 1) / 2) * (LAYOUT.stateRadius * 2.5);
-      this.statePositions.set(state.id, { x: startX, y: centerY + offset });
-    });
-  }
-
-  /**
-   * Position non-start states in a grid layout
-   */
-  positionOtherStates(states) {
-    const startStates = states.filter(s => s.isStart);
-    const otherStates = states.filter(s => !s.isStart);
-
-    if (otherStates.length === 0) return;
-
-    const startX = LAYOUT.padding + LAYOUT.stateRadius + 20;
-    const availableWidth = this.width - startX - LAYOUT.padding - LAYOUT.stateRadius * 2;
-    const availableHeight = this.height - LAYOUT.padding * 2;
-
-    // Calculate grid dimensions
-    const aspectRatio = availableWidth / availableHeight;
-    const cols = Math.ceil(Math.sqrt(otherStates.length * aspectRatio));
-    const rows = Math.ceil(otherStates.length / cols);
-
-    const cellWidth = availableWidth / cols;
-    const cellHeight = availableHeight / Math.max(rows, 1);
-
-    otherStates.forEach((state, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const x = startX + LAYOUT.stateRadius * 3 + col * cellWidth + cellWidth / 2;
-      const y = LAYOUT.padding + row * cellHeight + cellHeight / 2;
-      this.statePositions.set(state.id, { x, y });
-    });
-  }
-
-  /**
-   * Refine layout using force-directed algorithm
-   * Applies repulsion between overlapping states
-   */
-  refineLayout(iterations) {
-    const states = Array.from(this.statePositions.keys());
-    const minDist = LAYOUT.minStateDistance;
-
-    for (let iter = 0; iter < iterations; iter++) {
-      const forces = new Map();
-      states.forEach(id => forces.set(id, { x: 0, y: 0 }));
-
-      // Calculate repulsion forces between close states
-      for (let i = 0; i < states.length; i++) {
-        for (let j = i + 1; j < states.length; j++) {
-          this.applyRepulsionForce(states[i], states[j], minDist, forces);
-        }
-      }
-
-      // Apply forces with boundary constraints
-      this.applyForces(states, forces);
-    }
-  }
-
-  /**
-   * Apply repulsion force between two states if they're too close
-   */
-  applyRepulsionForce(stateA, stateB, minDist, forces) {
-    const posA = this.statePositions.get(stateA);
-    const posB = this.statePositions.get(stateB);
-
-    const dx = posB.x - posA.x;
-    const dy = posB.y - posA.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    if (dist < minDist && dist > 0) {
-      const force = ((minDist - dist) / dist) * 0.5;
-      const fx = dx * force;
-      const fy = dy * force;
-
-      forces.get(stateA).x -= fx;
-      forces.get(stateA).y -= fy;
-      forces.get(stateB).x += fx;
-      forces.get(stateB).y += fy;
-    }
-  }
-
-  /**
-   * Apply accumulated forces to state positions
-   */
-  applyForces(states, forces) {
-    const minX = LAYOUT.padding + LAYOUT.stateRadius;
-    const maxX = this.width - LAYOUT.padding - LAYOUT.stateRadius;
-    const minY = LAYOUT.padding + LAYOUT.stateRadius;
-    const maxY = this.height - LAYOUT.padding - LAYOUT.stateRadius;
-
-    states.forEach(id => {
-      const pos = this.statePositions.get(id);
-      const force = forces.get(id);
-
-      pos.x = Math.max(minX, Math.min(maxX, pos.x + force.x));
-      pos.y = Math.max(minY, Math.min(maxY, pos.y + force.y));
-    });
-  }
-
-  // ============================================
-  // Main Drawing
-  // ============================================
-
-  /**
-   * Main draw method - renders the complete visualization
-   */
-  draw() {
-    const ctx = this.ctx;
-
-    // Clear canvas
-    ctx.fillStyle = COLORS.background;
-    ctx.fillRect(0, 0, this.width, this.height);
-
-    if (!this.nfa) return;
-
-    // Draw transitions first (behind states)
-    this.drawTransitions();
-
-    // Draw states on top
-    this.drawStates();
-  }
-
-  // ============================================
-  // State Drawing
-  // ============================================
-
-  /**
-   * Draw all states
-   */
-  drawStates() {
-    const states = this.nfa.getStateInfo();
-
+    // Add state nodes
     states.forEach(state => {
-      const pos = this.statePositions.get(state.id);
-      if (!pos) return;
+      const classes = [];
+      if (state.isStart) classes.push('start');
+      if (state.isAccept) classes.push('accept');
 
-      const isHighlighted = this.highlightedStates.has(state.id);
+      elements.push({
+        data: {
+          id: `s${state.id}`,
+          label: this.getStateLabel(state.id)
+        },
+        classes: classes.join(' ')
+      });
 
-      this.drawStateCircle(pos, state, isHighlighted);
-      this.drawStateLabel(pos, state.id);
-
+      // Add invisible marker node + edge for start states
       if (state.isStart) {
-        this.drawStartArrow(pos);
+        elements.push({
+          data: { id: `start-marker-${state.id}` },
+          classes: 'start-marker'
+        });
+        elements.push({
+          data: {
+            id: `start-edge-${state.id}`,
+            source: `start-marker-${state.id}`,
+            target: `s${state.id}`
+          },
+          classes: 'start-arrow'
+        });
       }
     });
+
+    // Group transitions by source-target pair
+    const grouped = this.groupTransitions(transitions);
+
+    // Add edges
+    grouped.forEach(({ from, to, symbols }, key) => {
+      const isLoop = from === to;
+      const label = symbols.join(', ');
+
+      elements.push({
+        data: {
+          id: `e${key}`,
+          source: `s${from}`,
+          target: `s${to}`,
+          label: label
+        },
+        classes: isLoop ? 'loop' : ''
+      });
+    });
+
+    return elements;
   }
 
   /**
-   * Draw a single state circle with appropriate styling
+   * Group transitions by source-target pair
+   * @param {Array} transitions
+   * @returns {Map}
    */
-  drawStateCircle(pos, state, isHighlighted) {
-    const ctx = this.ctx;
-    const radius = LAYOUT.stateRadius;
+  groupTransitions(transitions) {
+    const grouped = new Map();
 
-    // Highlight glow
-    if (isHighlighted) {
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, radius + 8, 0, Math.PI * 2);
-      ctx.fillStyle = COLORS.highlightState;
-      ctx.fill();
-    }
-
-    // Main circle
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
-    ctx.fillStyle = state.isStart ? COLORS.startState : COLORS.state;
-    ctx.fill();
-    ctx.strokeStyle = isHighlighted ? COLORS.highlight : COLORS.stateStroke;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    // Accept state double circle
-    if (state.isAccept) {
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, radius - 5, 0, Math.PI * 2);
-      ctx.strokeStyle = COLORS.acceptState;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-  }
-
-  /**
-   * Draw state label (truncated if necessary)
-   */
-  drawStateLabel(pos, stateId) {
-    const ctx = this.ctx;
-    const label = this.getStateLabel(stateId);
-    const maxWidth = LAYOUT.stateRadius * 1.6;
-
-    ctx.fillStyle = COLORS.text;
-    ctx.font = `12px ${FONT}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    // Truncate if needed
-    let displayLabel = label;
-    if (ctx.measureText(label).width > maxWidth) {
-      while (ctx.measureText(displayLabel + '…').width > maxWidth && displayLabel.length > 1) {
-        displayLabel = displayLabel.slice(0, -1);
+    transitions.forEach(t => {
+      const key = `${t.from}-${t.to}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, { from: t.from, to: t.to, symbols: [] });
       }
-      displayLabel += '…';
-    }
+      grouped.get(key).symbols.push(t.symbol);
+    });
 
-    ctx.fillText(displayLabel, pos.x, pos.y);
+    return grouped;
   }
 
   /**
-   * Draw arrow indicating start state
+   * Get layout options based on graph structure
+   * @param {Array} elements
+   * @returns {Object} Layout options
    */
-  drawStartArrow(pos) {
-    const ctx = this.ctx;
-    const arrowLength = LAYOUT.startArrowLength;
-    const startX = pos.x - LAYOUT.stateRadius - arrowLength;
-    const endX = pos.x - LAYOUT.stateRadius - 2;
+  getLayoutOptions(elements) {
+    const nodeCount = elements.filter(e => e.data.id?.startsWith('s')).length;
 
-    // Line
-    ctx.beginPath();
-    ctx.moveTo(startX, pos.y);
-    ctx.lineTo(endX, pos.y);
-    ctx.strokeStyle = COLORS.startState;
-    ctx.lineWidth = 2;
-    ctx.stroke();
+    // Use breadthfirst for small graphs, cose for larger ones
+    if (nodeCount <= 10) {
+      return {
+        name: 'breadthfirst',
+        directed: true,
+        spacingFactor: 1.5,
+        padding: 50,
+        avoidOverlap: true
+      };
+    }
 
-    // Arrow head
-    ctx.beginPath();
-    ctx.moveTo(endX, pos.y);
-    ctx.lineTo(endX - 8, pos.y - 5);
-    ctx.lineTo(endX - 8, pos.y + 5);
-    ctx.closePath();
-    ctx.fillStyle = COLORS.startState;
-    ctx.fill();
+    return {
+      name: 'cose',
+      idealEdgeLength: 100,
+      nodeOverlap: 20,
+      padding: 50,
+      randomize: false,
+      componentSpacing: 100,
+      nodeRepulsion: 400000,
+      edgeElasticity: 100,
+      nestingFactor: 5,
+      gravity: 80,
+      numIter: 1000,
+      animate: false
+    };
   }
 
   /**
    * Get display label for a state
+   * @param {number} stateId
+   * @returns {string}
    */
   getStateLabel(stateId) {
     if (this.nfa.stateLabels?.has(stateId)) {
@@ -427,180 +329,49 @@ export class NFAVisualizer {
     return `q${stateId}`;
   }
 
-  // ============================================
-  // Transition Drawing
-  // ============================================
-
   /**
-   * Draw all transitions
+   * Highlight states from a trace
+   * @param {Array<{states: number[]}>} trace
    */
-  drawTransitions() {
-    const transitions = this.nfa.getAllTransitions();
+  highlightTrace(trace) {
+    if (!this.cy) return;
 
-    // Group transitions by from-to pair for combined labels
-    const grouped = this.groupTransitions(transitions);
+    // Clear previous highlights
+    this.cy.elements().removeClass('highlighted');
 
-    grouped.forEach(({ from, to, symbols }) => {
-      const fromPos = this.statePositions.get(from);
-      const toPos = this.statePositions.get(to);
-      if (!fromPos || !toPos) return;
-
-      const label = symbols.join(',');
-
-      if (from === to) {
-        this.drawSelfLoop(fromPos, label);
-      } else {
-        // Curve bidirectional transitions to avoid overlap
-        const reverseKey = `${to}-${from}`;
-        const hasBidirectional = grouped.has(reverseKey);
-        this.drawTransitionArrow(fromPos, toPos, label, hasBidirectional ? 15 : 0);
-      }
-    });
-  }
-
-  /**
-   * Group transitions by source-target pair
-   */
-  groupTransitions(transitions) {
-    const grouped = new Map();
-
-    transitions.forEach(t => {
-      const key = `${t.from}-${t.to}`;
-      if (!grouped.has(key)) {
-        grouped.set(key, { from: t.from, to: t.to, symbols: [] });
-      }
-      grouped.get(key).symbols.push(t.symbol);
-    });
-
-    return grouped;
-  }
-
-  /**
-   * Draw a transition arrow between two states
-   */
-  drawTransitionArrow(from, to, label, curve = 0) {
-    const ctx = this.ctx;
-    const radius = LAYOUT.stateRadius;
-
-    // Calculate direction vector
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    // Points at circle edges
-    const startX = from.x + (dx / dist) * radius;
-    const startY = from.y + (dy / dist) * radius;
-    const endX = to.x - (dx / dist) * radius;
-    const endY = to.y - (dy / dist) * radius;
-
-    // Control point for curve
-    const midX = (startX + endX) / 2;
-    const midY = (startY + endY) / 2;
-    const perpX = -dy / dist;
-    const perpY = dx / dist;
-    const ctrlX = midX + perpX * curve;
-    const ctrlY = midY + perpY * curve;
-
-    // Draw line/curve
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    if (curve !== 0) {
-      ctx.quadraticCurveTo(ctrlX, ctrlY, endX, endY);
-    } else {
-      ctx.lineTo(endX, endY);
+    if (trace.length > 0) {
+      const lastStep = trace[trace.length - 1];
+      lastStep.states.forEach(stateId => {
+        this.cy.$(`#s${stateId}`).addClass('highlighted');
+      });
     }
-    ctx.strokeStyle = COLORS.transition;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    // Arrow head
-    const angle = curve !== 0
-      ? Math.atan2(endY - ctrlY, endX - ctrlX)
-      : Math.atan2(dy, dx);
-
-    this.drawArrowHead(endX, endY, angle);
-
-    // Label
-    const labelX = curve !== 0 ? ctrlX : midX;
-    const labelY = curve !== 0 ? ctrlY : midY;
-    this.drawTransitionLabel(labelX, labelY, label);
   }
 
   /**
-   * Draw a self-loop above a state
+   * Clear all highlighting
    */
-  drawSelfLoop(pos, label) {
-    const ctx = this.ctx;
-    const loopRadius = LAYOUT.selfLoopRadius;
-    const loopY = pos.y - LAYOUT.stateRadius - loopRadius;
-
-    // Arc
-    ctx.beginPath();
-    ctx.arc(pos.x, loopY, loopRadius, LAYOUT.selfLoopStartAngle, LAYOUT.selfLoopEndAngle, true);
-    ctx.strokeStyle = COLORS.transition;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    // Arrow head at end of arc
-    const arrowAngle = LAYOUT.selfLoopEndAngle;
-    const arrowX = pos.x + loopRadius * Math.cos(arrowAngle);
-    const arrowY = loopY + loopRadius * Math.sin(arrowAngle);
-    const tangentAngle = arrowAngle + Math.PI / 2;
-
-    ctx.beginPath();
-    ctx.moveTo(arrowX, arrowY);
-    ctx.lineTo(arrowX - 8 * Math.cos(tangentAngle - Math.PI / 6),
-      arrowY - 8 * Math.sin(tangentAngle - Math.PI / 6));
-    ctx.lineTo(arrowX - 8 * Math.cos(tangentAngle + Math.PI / 6),
-      arrowY - 8 * Math.sin(tangentAngle + Math.PI / 6));
-    ctx.closePath();
-    ctx.fillStyle = COLORS.transition;
-    ctx.fill();
-
-    // Label
-    ctx.fillStyle = COLORS.transitionText;
-    ctx.font = `11px ${FONT}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(label, pos.x, loopY - loopRadius - 2);
+  clearHighlight() {
+    if (this.cy) {
+      this.cy.elements().removeClass('highlighted');
+    }
   }
 
   /**
-   * Draw an arrow head at a given position and angle
+   * Fit the graph to the container
    */
-
-  drawArrowHead(x, y, angle) {
-    const ctx = this.ctx;
-    const size = LAYOUT.arrowSize;
-
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x - size * Math.cos(angle - Math.PI / 6),
-      y - size * Math.sin(angle - Math.PI / 6));
-    ctx.lineTo(x - size * Math.cos(angle + Math.PI / 6),
-      y - size * Math.sin(angle + Math.PI / 6));
-    ctx.closePath();
-    ctx.fillStyle = COLORS.transition;
-    ctx.fill();
+  fit() {
+    if (this.cy) {
+      this.cy.fit(50);
+    }
   }
 
   /**
-   * Draw a transition label with background
+   * Destroy the Cytoscape instance
    */
-  drawTransitionLabel(x, y, label) {
-    const ctx = this.ctx;
-
-    ctx.font = `11px ${FONT}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    // Background
-    const labelWidth = ctx.measureText(label).width + 6;
-    ctx.fillStyle = COLORS.background;
-    ctx.fillRect(x - labelWidth / 2, y - 8, labelWidth, 16);
-
-    // Text
-    ctx.fillStyle = COLORS.transitionText;
-    ctx.fillText(label, x, y);
+  destroy() {
+    if (this.cy) {
+      this.cy.destroy();
+      this.cy = null;
+    }
   }
 }

@@ -44,7 +44,7 @@ const elements = {
   errorDisplay: document.getElementById('error-display'),
   testInput: document.getElementById('test-input'),
   testResult: document.getElementById('test-result'),
-  canvas: document.getElementById('nfa-canvas'),
+  cyContainer: document.getElementById('cy-container'),
   emptyState: document.getElementById('empty-state'),
 
   // Stats
@@ -77,12 +77,12 @@ function init() {
   });
 
   // Initialize visualizer
-  visualizer = new NFAVisualizer(elements.canvas);
+  visualizer = new NFAVisualizer(elements.cyContainer);
 
   // Handle window resize for visualization
   window.addEventListener('resize', () => {
-    if (currentNFA) {
-      visualizer.render(currentNFA);
+    if (currentNFA && visualizer) {
+      visualizer.fit();
     }
   });
 }
