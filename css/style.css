@@ -1,391 +1,569 @@
-/**
- * NFA Visualizer Styles
- * Clean, minimal dark theme with CSS nesting
- */
+/* ==========================================================================
+   NFA Visualizer - Stylesheet
+   ========================================================================== */
 
-/* ============================================
-   CSS Custom Properties (Design Tokens)
-   ============================================ */
+/* --------------------------------------------------------------------------
+   Design Tokens - High Contrast Dark Theme
+   -------------------------------------------------------------------------- */
 :root {
-  /* Colors */
-  --color-bg: #1a1a2e;
-  --color-surface: #16213e;
-  --color-border: #0f3460;
-  --color-code-bg: #0d1117;
+  /* Background colors */
+  --color-bg: #0f0f12;
+  --color-surface: #18181c;
+  --color-surface-raised: #222228;
+  --color-border: #3a3a45;
 
-  --color-text: #e8e8e8;
-  --color-text-muted: #8b8b8b;
-  --color-comment: #6a9955;
-  --color-keyword: #569cd6;
+  /* Code/Editor colors */
+  --color-code-bg: #0a0a0c;
+  --color-code-border: #2a2a35;
 
-  --color-accent: #0096ff;
-  --color-accent-hover: #0077cc;
-  --color-error: #ff4757;
-  --color-success: #2ed573;
-  --color-highlight: #ffc107;
+  /* Text colors - High Contrast */
+  --color-text: #f5f5f7;
+  --color-text-secondary: #b8b8c0;
+  --color-text-muted: #7a7a85;
+
+  /* Syntax highlighting */
+  --color-syntax-keyword: #c792ea;
+  --color-syntax-function: #82aaff;
+  --color-syntax-comment: #6a7080;
+
+  /* Accent colors */
+  --color-primary: #6c9eff;
+  --color-primary-hover: #5088ff;
+  --color-success: #4ade80;
+  --color-error: #f87171;
+  --color-warning: #fbbf24;
+
+  /* State colors for NFA */
+  --color-state-start: #60a5fa;
+  --color-state-accept: #4ade80;
+  --color-state-normal: #8b8b9a;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
 
   /* Typography */
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+  --font-size-xs: 11px;
+  --font-size-sm: 13px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
 
-  /* Spacing */
-  --spacing-xs: 5px;
-  --spacing-sm: 10px;
-  --spacing-md: 15px;
-  --spacing-lg: 20px;
-  --spacing-xl: 25px;
-
-  /* Border Radius */
-  --radius-sm: 3px;
-  --radius-md: 4px;
+  /* Borders & Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
   --radius-lg: 8px;
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
 }
 
-/* ============================================
-   Base Styles
-   ============================================ */
-* {
+/* --------------------------------------------------------------------------
+   Base Reset & Styles
+   -------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
   font-family: var(--font-sans);
-  background-color: var(--color-bg);
-  color: var(--color-text);
-  margin: 0;
-  padding: var(--spacing-lg);
+  font-size: var(--font-size-md);
   line-height: 1.5;
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  min-height: 100vh;
 }
 
-/* ============================================
-   Typography
-   ============================================ */
-h1 {
-  text-align: center;
-  color: var(--color-accent);
-  margin-bottom: 30px;
-  font-weight: 300;
-}
+/* --------------------------------------------------------------------------
+   Header
+   -------------------------------------------------------------------------- */
+header {
+  padding: var(--space-md) var(--space-xl);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
 
-h2 {
-  font-size: 1.1rem;
-  font-weight: 500;
-  margin: 0 0 var(--spacing-md) 0;
-  color: var(--color-text-muted);
-}
-
-/* ============================================
-   Layout
-   ============================================ */
-.container {
-  max-width: 700px;
-  margin: 0 auto;
-}
-
-.hidden {
-  display: none !important;
-}
-
-/* ============================================
-   Description Section
-   ============================================ */
-.description {
-  margin-bottom: var(--spacing-xl);
-  color: var(--color-text-muted);
-  font-size: 0.95rem;
-
-  p {
-    margin: 0 0 var(--spacing-sm) 0;
-  }
-
-  .tip {
-    font-style: italic;
-
-    code {
-      background: var(--color-code-bg);
-      padding: 2px 6px;
-      border-radius: var(--radius-sm);
-      font-family: var(--font-mono);
-      font-size: 0.9em;
-    }
+  h1 {
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    color: var(--color-text);
   }
 }
 
-/* ============================================
-   Input Header (Name + Toggle)
-   ============================================ */
-.input-header {
+/* --------------------------------------------------------------------------
+   Three-Panel App Layout
+   -------------------------------------------------------------------------- */
+.app-layout {
+  display: grid;
+  grid-template-columns: 380px 1fr 280px;
+  height: calc(100vh - 53px);
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------------------
+   Panel Base Styles
+   -------------------------------------------------------------------------- */
+.panel {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--color-border);
+  overflow: hidden;
+
+  &:last-child {
+    border-right: none;
+  }
+}
+
+.panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--spacing-lg);
-  flex-wrap: wrap;
-  gap: var(--spacing-md);
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  flex-shrink: 0;
+
+  h2 {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--color-text);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
 }
 
-.name-field {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
+/* --------------------------------------------------------------------------
+   Left Panel: Configuration
+   -------------------------------------------------------------------------- */
+.panel-config {
+  background: var(--color-surface);
 
-  label {
-    color: var(--color-text-muted);
+  .input-section {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-lg);
   }
 
-  input {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    color: var(--color-text);
-    padding: 8px 12px;
-    border-radius: var(--radius-md);
-    font-size: 0.95rem;
-    width: 180px;
+  .button-row {
+    padding: var(--space-lg);
+    border-top: 1px solid var(--color-border);
+    flex-shrink: 0;
+  }
+}
 
-    &:focus {
-      outline: none;
-      border-color: var(--color-accent);
+/* --------------------------------------------------------------------------
+   Middle Panel: Visualization
+   -------------------------------------------------------------------------- */
+.panel-viz {
+  background: var(--color-bg);
+  position: relative;
+
+  #nfa-canvas-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  #nfa-canvas {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+  }
+
+  .empty-state {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--color-text-muted);
+    font-size: var(--font-size-sm);
+    text-align: center;
+    pointer-events: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Right Panel: Metadata
+   -------------------------------------------------------------------------- */
+.panel-meta {
+  background: var(--color-surface);
+
+  .metadata-section {
+    padding: var(--space-lg);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .test-section {
+    padding: var(--space-lg);
+    border-bottom: 1px solid var(--color-border);
+
+    h3 {
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      color: var(--color-text);
+      margin-bottom: var(--space-md);
+    }
+  }
+
+  .help-section {
+    padding: var(--space-lg);
+    flex: 1;
+    overflow-y: auto;
+
+    h3 {
+      font-size: var(--font-size-sm);
+      font-weight: 600;
+      color: var(--color-text);
+      margin-bottom: var(--space-md);
+    }
+
+    p {
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-sm);
+    }
+
+    ul {
+      list-style: none;
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+
+      li {
+        margin-bottom: var(--space-xs);
+        padding-left: var(--space-md);
+        position: relative;
+
+        &::before {
+          content: '•';
+          position: absolute;
+          left: 0;
+          color: var(--color-text-muted);
+        }
+
+        strong {
+          color: var(--color-text);
+          font-weight: 500;
+        }
+      }
+    }
+
+    .tip {
+      margin-top: var(--space-md);
+      padding: var(--space-sm) var(--space-md);
+      background: var(--color-surface-raised);
+      border-radius: var(--radius-sm);
+      font-size: var(--font-size-xs);
+      color: var(--color-text-muted);
+
+      code {
+        color: var(--color-syntax-function);
+        font-family: var(--font-mono);
+        font-size: var(--font-size-xs);
+      }
     }
   }
 }
 
-.toggle-label {
+/* --------------------------------------------------------------------------
+   Stats Display
+   -------------------------------------------------------------------------- */
+.stat-group {
   display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.stat {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  color: var(--color-text-muted);
-  font-size: 0.95rem;
-
-  input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
-    accent-color: var(--color-accent);
-  }
 }
 
-/* ============================================
-   Input Sections (Split & Unified)
-   ============================================ */
-.input-section {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
-  margin-bottom: var(--spacing-lg);
+.stat-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
 }
 
-/* ============================================
-   Code Block Styling
-   ============================================ */
+.stat-value {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--color-text);
+}
+
+/* --------------------------------------------------------------------------
+   Code Blocks
+   -------------------------------------------------------------------------- */
 .code-block {
-  margin-bottom: var(--spacing-lg);
-
-  &:last-child {
-    margin-bottom: 0;
-  }
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-code-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  margin-bottom: var(--space-md);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
 }
 
 .code-comment {
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  color: var(--color-comment);
-  margin-bottom: var(--spacing-xs);
+  color: var(--color-syntax-comment);
+  font-size: var(--font-size-xs);
+  margin-bottom: var(--space-xs);
 }
 
 .code-line {
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-  color: var(--color-text);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
 }
 
-.code-prefix,
-.code-suffix {
-  color: var(--color-keyword);
+.code-prefix {
+  color: var(--color-syntax-keyword);
   white-space: nowrap;
+  padding-top: 6px;
 }
 
-/* ============================================
-   Form Elements
-   ============================================ */
-textarea {
-  background: var(--color-code-bg);
-  border: 1px solid var(--color-border);
+.code-suffix {
   color: var(--color-text);
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-  padding: var(--spacing-sm);
-  border-radius: var(--radius-md);
-  resize: vertical;
-  width: 100%;
-  line-height: 1.5;
+  white-space: nowrap;
+  padding-top: 6px;
+}
 
-  &:focus {
-    outline: none;
-    border-color: var(--color-accent);
+/* --------------------------------------------------------------------------
+   Form Elements
+   -------------------------------------------------------------------------- */
+textarea,
+input[type="text"] {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  width: 100%;
+  line-height: 1.6;
+
+  &::placeholder {
+    color: var(--color-text-muted);
   }
 }
 
-#start-state {
-  flex: 1;
-  resize: none;
-  padding: var(--spacing-xs) 8px;
-  margin: 0 var(--spacing-xs);
+.code-block textarea {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-code-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm);
+
+  &:focus {
+    border-color: var(--color-primary);
+    background: var(--color-code-bg);
+  }
 }
 
-#unified-code {
-  min-height: 350px;
-}
-
-/* ============================================
-   Error Display
-   ============================================ */
-.error-display {
-  background: rgba(255, 71, 87, 0.1);
-  border: 1px solid var(--color-error);
-  color: var(--color-error);
-  padding: 12px var(--spacing-md);
+/* Unified input textarea */
+#unified-input textarea {
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-code-border);
   border-radius: var(--radius-md);
-  margin-bottom: var(--spacing-lg);
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  white-space: pre-wrap;
+  padding: var(--space-md);
+  height: 100%;
+  min-height: 400px;
+
+  &:focus {
+    border-color: var(--color-primary);
+  }
 }
 
-/* ============================================
-   Buttons
-   ============================================ */
-.button-row {
+/* --------------------------------------------------------------------------
+   Toggle Switch
+   -------------------------------------------------------------------------- */
+.toggle-label {
   display: flex;
-  justify-content: flex-end;
-  gap: var(--spacing-sm);
+  align-items: center;
+  gap: var(--space-sm);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+
+  input[type="checkbox"] {
+    appearance: none;
+    width: 36px;
+    height: 20px;
+    background: var(--color-surface-raised);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    position: relative;
+    cursor: pointer;
+    transition: var(--transition-fast);
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 14px;
+      height: 14px;
+      background: var(--color-text-muted);
+      border-radius: 50%;
+      transition: var(--transition-fast);
+    }
+
+    &:checked {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+
+      &::after {
+        left: 18px;
+        background: var(--color-text);
+      }
+    }
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Buttons
+   -------------------------------------------------------------------------- */
+button {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius-md);
+  transition: var(--transition-fast);
 }
 
 .primary-btn {
-  background: var(--color-accent);
-  color: white;
-  border: none;
-  padding: var(--spacing-sm) 24px;
-  border-radius: var(--radius-md);
-  font-size: 0.95rem;
-  cursor: pointer;
-  transition: background 0.2s;
+  width: 100%;
+  padding: var(--space-md) var(--space-lg);
+  background: var(--color-primary);
+  color: var(--color-bg);
 
   &:hover {
-    background: var(--color-accent-hover);
+    background: var(--color-primary-hover);
   }
 
   &:active {
-    transform: translateY(1px);
+    transform: scale(0.98);
   }
 }
 
-/* ============================================
-   Test Section
-   ============================================ */
-.test-section {
-  background: var(--color-surface);
+/* Test button */
+#test-btn {
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
-  margin-top: var(--spacing-lg);
+  flex-shrink: 0;
+
+  &:hover {
+    background: var(--color-border);
+  }
 }
 
+/* --------------------------------------------------------------------------
+   Test Section
+   -------------------------------------------------------------------------- */
 .test-input-row {
   display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  flex-wrap: wrap;
+  gap: var(--space-sm);
 
-  label {
-    color: var(--color-text-muted);
-    font-size: 0.9rem;
-  }
-
-  input {
+  input[type="text"] {
     flex: 1;
-    min-width: 150px;
+    padding: var(--space-sm) var(--space-md);
     background: var(--color-code-bg);
-    border: 1px solid var(--color-border);
-    color: var(--color-text);
-    padding: 8px 12px;
-    border-radius: var(--radius-md);
-    font-family: var(--font-mono);
-    font-size: 0.9rem;
+    border: 1px solid var(--color-code-border);
+    border-radius: var(--radius-sm);
 
     &:focus {
-      outline: none;
-      border-color: var(--color-accent);
-    }
-  }
-
-  button {
-    background: var(--color-border);
-    color: var(--color-text);
-    border: none;
-    padding: 8px 16px;
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: background 0.2s;
-
-    &:hover {
-      background: #1a4980;
+      border-color: var(--color-primary);
     }
   }
 }
 
 .test-result {
-  margin-top: var(--spacing-md);
-  padding: 12px var(--spacing-md);
-  border-radius: var(--radius-md);
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
   font-family: var(--font-mono);
-  font-size: 0.9rem;
-  white-space: pre-wrap;
+  min-height: 36px;
 
   &:empty {
     display: none;
   }
 
   &.accepted {
-    background: rgba(46, 213, 115, 0.1);
+    background: rgba(74, 222, 128, 0.1);
     border: 1px solid var(--color-success);
     color: var(--color-success);
   }
 
   &.rejected {
-    background: rgba(255, 71, 87, 0.1);
+    background: rgba(248, 113, 113, 0.1);
     border: 1px solid var(--color-error);
     color: var(--color-error);
   }
 }
 
-/* ============================================
-   Visualization Section
-   ============================================ */
-.visualization-section {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-lg);
-  margin-top: var(--spacing-lg);
-}
-
-.viz-controls {
-  margin-bottom: var(--spacing-md);
-  color: var(--color-text-muted);
-  font-size: 0.9rem;
-}
-
-#nfa-canvas-container {
-  background: var(--color-code-bg);
+/* --------------------------------------------------------------------------
+   Error Display
+   -------------------------------------------------------------------------- */
+.error-display {
+  margin: var(--space-lg);
+  margin-top: 0;
+  padding: var(--space-md);
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid var(--color-error);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
 }
 
-#nfa-canvas {
-  display: block;
-  width: 100%;
-  height: 400px;
+/* --------------------------------------------------------------------------
+   Utility Classes
+   -------------------------------------------------------------------------- */
+.hidden {
+  display: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   Responsive Adjustments
+   -------------------------------------------------------------------------- */
+@media (max-width: 1200px) {
+  .app-layout {
+    grid-template-columns: 320px 1fr 240px;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .panel {
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+
+  .panel-viz {
+    min-height: 400px;
+  }
 }

@@ -42,12 +42,15 @@ const elements = {
 
   // Output
   errorDisplay: document.getElementById('error-display'),
-  testSection: document.getElementById('test-section'),
   testInput: document.getElementById('test-input'),
   testResult: document.getElementById('test-result'),
-  vizSection: document.getElementById('visualization-section'),
-  stateCount: document.getElementById('state-count'),
-  canvas: document.getElementById('nfa-canvas')
+  canvas: document.getElementById('nfa-canvas'),
+  emptyState: document.getElementById('empty-state'),
+
+  // Stats
+  statStates: document.getElementById('stat-states'),
+  statStart: document.getElementById('stat-start'),
+  statAccept: document.getElementById('stat-accept')
 };
 
 // ============================================
@@ -61,6 +64,9 @@ let visualizer = null;
 // Initialization
 // ============================================
 
+/**
+ * Initialize the application: set up event listeners and visualizer
+ */
 function init() {
   // Set up event listeners
   elements.unifiedToggle.addEventListener('change', handleModeToggle);
@@ -167,13 +173,14 @@ function getCurrentCode() {
  * Show test section and visualization with current NFA
  */
 function showResults() {
-  elements.testSection.classList.remove('hidden');
-  elements.vizSection.classList.remove('hidden');
+  // Hide empty state message
+  elements.emptyState.classList.add('hidden');
 
-  // Update state count display
+  // Update stats display
   const { startStates, acceptStates } = currentNFA;
-  elements.stateCount.textContent =
-    `States: ${currentNFA.numStates()} | Start: ${startStates.size} | Accept: ${acceptStates.size}`;
+  elements.statStates.textContent = currentNFA.numStates();
+  elements.statStart.textContent = startStates.size;
+  elements.statAccept.textContent = acceptStates.size;
 
   // Render visualization
   visualizer.render(currentNFA);
@@ -187,8 +194,10 @@ function showResults() {
  * Hide test section and visualization
  */
 function hideResults() {
-  elements.testSection.classList.add('hidden');
-  elements.vizSection.classList.add('hidden');
+  elements.emptyState.classList.remove('hidden');
+  elements.statStates.textContent = '—';
+  elements.statStart.textContent = '—';
+  elements.statAccept.textContent = '—';
 }
 
 // ============================================

@@ -16,21 +16,24 @@
 // ============================================
 
 /**
- * Visual theme colors - synced with CSS variables
+ * Visual theme colors - High Contrast - synced with CSS variables
  */
 const COLORS = {
-  background: '#0d1117',
-  state: '#0f3460',
-  stateStroke: '#1a4980',
-  startState: '#0096ff',
-  acceptState: '#2ed573',
-  text: '#e8e8e8',
-  textMuted: '#8b8b8b',
-  transition: '#4a5568',
-  transitionText: '#a0aec0',
-  highlight: '#ffc107',
-  highlightState: 'rgba(255, 193, 7, 0.3)'
+  background: '#0f0f12',
+  state: '#2a2a35',
+  stateStroke: '#5a5a6a',
+  startState: '#60a5fa',
+  acceptState: '#4ade80',
+  text: '#f5f5f7',
+  textMuted: '#a0a0b0',
+  transition: '#6a6a7a',
+  transitionText: '#d0d0d8',
+  highlight: '#fbbf24',
+  highlightState: 'rgba(251, 191, 36, 0.3)'
 };
+
+/** Base font for canvas text */
+const FONT = '-apple-system, BlinkMacSystemFont, sans-serif';
 
 /**
  * Layout and sizing constants
@@ -41,8 +44,10 @@ const LAYOUT = {
   canvasHeight: 400,
   arrowSize: 8,
   selfLoopRadius: 20,
+  selfLoopStartAngle: 0.2 * Math.PI,
+  selfLoopEndAngle: 0.8 * Math.PI,
   startArrowLength: 30,
-  minStateDistance: 90,  // 3 * stateRadius
+  minStateDistance: 90,
   forceIterations: 50
 };
 
@@ -359,7 +364,7 @@ export class NFAVisualizer {
     const maxWidth = LAYOUT.stateRadius * 1.6;
 
     ctx.fillStyle = COLORS.text;
-    ctx.font = '12px -apple-system, sans-serif';
+    ctx.font = `12px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
@@ -531,13 +536,13 @@ export class NFAVisualizer {
 
     // Arc
     ctx.beginPath();
-    ctx.arc(pos.x, loopY, loopRadius, 0.2 * Math.PI, 0.8 * Math.PI, true);
+    ctx.arc(pos.x, loopY, loopRadius, LAYOUT.selfLoopStartAngle, LAYOUT.selfLoopEndAngle, true);
     ctx.strokeStyle = COLORS.transition;
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Arrow head
-    const arrowAngle = 0.8 * Math.PI;
+    // Arrow head at end of arc
+    const arrowAngle = LAYOUT.selfLoopEndAngle;
     const arrowX = pos.x + loopRadius * Math.cos(arrowAngle);
     const arrowY = loopY + loopRadius * Math.sin(arrowAngle);
     const tangentAngle = arrowAngle + Math.PI / 2;
@@ -554,7 +559,7 @@ export class NFAVisualizer {
 
     // Label
     ctx.fillStyle = COLORS.transitionText;
-    ctx.font = '11px -apple-system, sans-serif';
+    ctx.font = `11px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     ctx.fillText(label, pos.x, loopY - loopRadius - 2);
@@ -563,6 +568,7 @@ export class NFAVisualizer {
   /**
    * Draw an arrow head at a given position and angle
    */
+
   drawArrowHead(x, y, angle) {
     const ctx = this.ctx;
     const size = LAYOUT.arrowSize;
@@ -584,7 +590,7 @@ export class NFAVisualizer {
   drawTransitionLabel(x, y, label) {
     const ctx = this.ctx;
 
-    ctx.font = '11px -apple-system, sans-serif';
+    ctx.font = `11px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
