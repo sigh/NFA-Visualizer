@@ -23,7 +23,6 @@
 
   /* Syntax highlighting */
   --color-syntax-keyword: #c792ea;
-  --color-syntax-function: #82aaff;
   --color-syntax-comment: #6a7080;
 
   /* Accent colors */
@@ -142,7 +141,7 @@ header {
   .input-section {
     flex: 1;
     overflow-y: auto;
-    padding: var(--space-lg);
+    padding: var(--space-md) var(--space-lg);
   }
 
   .button-row {
@@ -163,6 +162,7 @@ header {
     flex: 1;
     width: 100%;
     min-height: 400px;
+    position: relative;
   }
 
   .empty-state {
@@ -281,36 +281,41 @@ header {
    Code Blocks
    -------------------------------------------------------------------------- */
 .code-block {
-  background: var(--color-code-bg);
-  border: 1px solid var(--color-code-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-md);
-  margin-bottom: var(--space-md);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
+  margin-bottom: var(--space-xs);
 }
 
 .code-comment {
   color: var(--color-syntax-comment);
   font-size: var(--font-size-xs);
-  margin-bottom: var(--space-xs);
 }
 
 .code-line {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
 }
 
-.code-prefix {
+.code-block-inline .code-line {
+  align-items: center;
+
+  input[type="text"] {
+    flex: 1;
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--color-surface-raised);
+    border: 1px solid var(--color-code-border);
+    border-radius: var(--radius-sm);
+
+    &:focus {
+      border-color: var(--color-primary);
+      background: var(--color-code-bg);
+    }
+  }
+}
+
+.code-syntax {
   color: var(--color-syntax-keyword);
   white-space: nowrap;
-  padding-top: 6px;
-}
-
-.code-suffix {
-  color: var(--color-text);
-  white-space: nowrap;
-  padding-top: 6px;
 }
 
 /* --------------------------------------------------------------------------

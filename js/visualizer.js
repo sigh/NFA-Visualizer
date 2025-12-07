@@ -393,15 +393,6 @@ export class NFAVisualizer {
   }
 
   /**
-   * Clear all highlighting
-   */
-  clearHighlight() {
-    if (this.cy) {
-      this.cy.elements().removeClass('highlighted');
-    }
-  }
-
-  /**
    * Fit the graph to the container
    */
   fit() {

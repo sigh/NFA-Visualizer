@@ -16,8 +16,23 @@
 /** Default maximum number of states before throwing an error */
 const DEFAULT_MAX_STATES = 1000;
 
-/** Default maximum symbol value to explore during NFA construction */
-const DEFAULT_MAX_SYMBOLS = 10;
+/** Default symbol class (regex character class syntax) */
+export const DEFAULT_SYMBOL_CLASS = '1-9';
+
+/**
+ * Full set of symbols the app can use.
+ * Includes digits, letters, and common punctuation.
+ */
+const ALL_SYMBOLS = [
+  // Digits 0-9
+  ...'0123456789',
+  // Lowercase letters
+  ...'abcdefghijklmnopqrstuvwxyz',
+  // Uppercase letters
+  ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+  // Common punctuation/symbols
+  ...'_-+*/.@#$%&!?'
+];
 
 // ============================================
 // NFA Class
@@ -225,14 +240,14 @@ export class NFABuilder {
    * @param {Function} config.accept - (state) => boolean
    * @param {Object} options - Builder options
    * @param {number} options.maxStates - Maximum states before error
-   * @param {number} options.maxSymbols - Maximum symbol value to explore
+   * @param {Array} options.symbols - Array of symbols to explore
    */
   constructor(config, options = {}) {
     this.startState = config.startState;
     this.transitionFn = config.transition;
     this.acceptFn = config.accept;
     this.maxStates = options.maxStates || DEFAULT_MAX_STATES;
-    this.maxSymbols = options.maxSymbols || DEFAULT_MAX_SYMBOLS;
+    this.symbols = options.symbols || expandSymbolClass(DEFAULT_SYMBOL_CLASS);
   }
 
   /**
@@ -294,8 +309,8 @@ export class NFABuilder {
       const stateStr = idToStateStr.get(currentId);
       const stateValue = this._deserializeState(stateStr);
 
-      // Try all possible input symbols
-      for (let symbol = 1; symbol <= this.maxSymbols; symbol++) {
+      // Try all configured symbols
+      for (const symbol of this.symbols) {
         const nextStates = this._normalizeToArray(this.transitionFn(stateValue, symbol));
 
         for (const nextState of nextStates) {
@@ -345,6 +360,42 @@ export class NFABuilder {
    */
   _deserializeState(stateStr) {
     return JSON.parse(stateStr);
+  }
+}
+
+// ============================================
+// Symbol Class Expansion
+// ============================================
+
+/**
+ * Expand a regex character class pattern into an array of matching symbols.
+ * Uses JavaScript's regex engine to test each symbol in ALL_SYMBOLS.
+ *
+ * @param {string} charClass - Character class content (without brackets), e.g. "1-9", "a-zA-Z0-9_"
+ * @returns {Array<string|number>} Array of matching symbols (numbers are returned as numbers)
+ * @throws {Error} If the character class pattern is invalid
+ */
+export function expandSymbolClass(charClass) {
+  if (!charClass || charClass.trim() === '') {
+    throw new Error('Symbol class cannot be empty');
+  }
+
+  try {
+    const regex = new RegExp(`^[${charClass}]$`);
+    const matches = ALL_SYMBOLS.filter(s => regex.test(String(s)));
+
+    if (matches.length === 0) {
+      throw new Error(`No symbols match the pattern [${charClass}]`);
+    }
+
+    // Convert numeric strings to numbers for backward compatibility
+    return matches.map(s => {
+      const num = Number(s);
+      return !isNaN(num) && s.match(/^[0-9]$/) ? num : s;
+    });
+  } catch (e) {
+    if (e.message.includes('No symbols match')) throw e;
+    throw new Error(`Invalid character class pattern: ${e.message}`);
   }
 }
 

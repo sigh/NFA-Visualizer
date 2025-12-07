@@ -6,7 +6,7 @@
  * @module app
  */
 
-import { NFABuilder, parseNFAConfig, buildCodeFromSplit, parseSplitFromCode } from './nfa.js';
+import { NFABuilder, parseNFAConfig, buildCodeFromSplit, parseSplitFromCode, expandSymbolClass, DEFAULT_SYMBOL_CLASS } from './nfa.js';
 import { NFAVisualizer } from './visualizer.js';
 
 // ============================================
@@ -14,12 +14,12 @@ import { NFAVisualizer } from './visualizer.js';
 // ============================================
 
 const CONFIG = {
-  maxStates: 500,
-  maxSymbols: 10
+  maxStates: 500
 };
 
 /** SessionStorage keys for persisting input fields */
 const STORAGE_KEYS = {
+  symbols: 'nfa-symbols',
   startState: 'nfa-start-state',
   transition: 'nfa-transition',
   accept: 'nfa-accept',
@@ -39,6 +39,7 @@ const elements = {
   unifiedInput: document.getElementById('unified-input'),
 
   // Split mode inputs
+  symbolsInput: document.getElementById('symbols-input'),
   startStateInput: document.getElementById('start-state'),
   transitionInput: document.getElementById('transition-fn'),
   acceptInput: document.getElementById('accept-fn'),
@@ -91,6 +92,7 @@ function init() {
   });
 
   // Save inputs on change
+  elements.symbolsInput.addEventListener('input', saveToStorage);
   elements.startStateInput.addEventListener('input', saveToStorage);
   elements.transitionInput.addEventListener('input', saveToStorage);
   elements.acceptInput.addEventListener('input', saveToStorage);
@@ -117,6 +119,7 @@ function init() {
  * Save current input values to sessionStorage
  */
 function saveToStorage() {
+  sessionStorage.setItem(STORAGE_KEYS.symbols, elements.symbolsInput.value);
   sessionStorage.setItem(STORAGE_KEYS.startState, elements.startStateInput.value);
   sessionStorage.setItem(STORAGE_KEYS.transition, elements.transitionInput.value);
   sessionStorage.setItem(STORAGE_KEYS.accept, elements.acceptInput.value);
@@ -129,6 +132,7 @@ function saveToStorage() {
  * Restore input values from sessionStorage
  */
 function restoreFromStorage() {
+  const symbols = sessionStorage.getItem(STORAGE_KEYS.symbols);
   const startState = sessionStorage.getItem(STORAGE_KEYS.startState);
   const transition = sessionStorage.getItem(STORAGE_KEYS.transition);
   const accept = sessionStorage.getItem(STORAGE_KEYS.accept);
@@ -136,6 +140,7 @@ function restoreFromStorage() {
   const unifiedMode = sessionStorage.getItem(STORAGE_KEYS.unifiedMode);
   const testInput = sessionStorage.getItem(STORAGE_KEYS.testInput);
 
+  if (symbols !== null) elements.symbolsInput.value = symbols;
   if (startState !== null) elements.startStateInput.value = startState;
   if (transition !== null) elements.transitionInput.value = transition;
   if (accept !== null) elements.acceptInput.value = accept;
@@ -204,8 +209,12 @@ function handleBuild() {
     // Parse and validate
     const config = parseNFAConfig(code);
 
+    // Expand symbol class to array of symbols
+    const symbolClass = elements.symbolsInput.value.trim() || DEFAULT_SYMBOL_CLASS;
+    const symbols = expandSymbolClass(symbolClass);
+
     // Build NFA
-    const builder = new NFABuilder(config, CONFIG);
+    const builder = new NFABuilder(config, { ...CONFIG, symbols });
     currentNFA = builder.build();
 
     // Update UI
@@ -292,17 +301,13 @@ function formatStateLabel(label) {
   }
 }
 
+const HTML_ENTITIES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
 /**
  * Escape HTML special characters
  */
 function escapeHtml(str) {
-  return str.replace(/[&<>"']/g, char => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  })[char]);
+  return str.replace(/[&<>"']/g, c => HTML_ENTITIES[c]);
 }
 
 /**

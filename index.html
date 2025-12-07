@@ -25,46 +25,56 @@
         </label>
       </div>
 
-      <div id="split-input" class="input-section">
-        <div class="code-block">
-          <div class="code-comment">// Initial state(s). Use an array for multiple start states.</div>
+      <div class="input-section">
+        <div class="code-block code-block-inline">
+          <div class="code-comment">// Symbols to explore (regex character class syntax)</div>
           <div class="code-line">
-            <span class="code-prefix">startState = </span>
-            <textarea id="start-state" rows="1" spellcheck="false" placeholder='"start"'>0</textarea>
-            <span class="code-suffix">;</span>
+            <span class="code-syntax">symbols = /[</span>
+            <input type="text" id="symbols-input" value="1-9" spellcheck="false" placeholder="1-9">
+            <span class="code-syntax">]/;</span>
           </div>
         </div>
 
-        <div class="code-block">
-          <div class="code-comment">// Returns next state(s) given current state and input symbol.</div>
-          <div class="code-line">
-            <span class="code-prefix">function transition(state, symbol) {</span>
+        <div id="split-input">
+          <div class="code-block">
+            <div class="code-comment">// Initial state(s). Use an array for multiple start states.</div>
+            <div class="code-line">
+              <span class="code-syntax">startState = </span>
+              <textarea id="start-state" rows="1" spellcheck="false" placeholder='"start"'>0</textarea>
+              <span class="code-syntax">;</span>
+            </div>
           </div>
-          <textarea id="transition-fn" rows="8" spellcheck="false" placeholder='return "next";'>// Count: accepts sequences summing to 3
+
+          <div class="code-block">
+            <div class="code-comment">// Returns next state(s) given current state and input symbol.</div>
+            <div class="code-line">
+              <span class="code-syntax">function transition(state, symbol) {</span>
+            </div>
+            <textarea id="transition-fn" rows="8" spellcheck="false" placeholder='return "next";'>// Count: accepts sequences summing to 3
 if (state + symbol <= 3) {
   return state + symbol;
 }
 return undefined;</textarea>
-          <div class="code-line">
-            <span class="code-suffix">}</span>
+            <div class="code-line">
+              <span class="code-syntax">}</span>
+            </div>
+          </div>
+
+          <div class="code-block">
+            <div class="code-comment">// Returns true if state is a valid final/accepting state.</div>
+            <div class="code-line">
+              <span class="code-syntax">function accept(state) {</span>
+            </div>
+            <textarea id="accept-fn" rows="1" spellcheck="false"
+              placeholder='return state === "done";'>return state === 3;</textarea>
+            <div class="code-line">
+              <span class="code-syntax">}</span>
+            </div>
           </div>
         </div>
 
-        <div class="code-block">
-          <div class="code-comment">// Returns true if state is a valid final/accepting state.</div>
-          <div class="code-line">
-            <span class="code-prefix">function accept(state) {</span>
-          </div>
-          <textarea id="accept-fn" rows="1" spellcheck="false"
-            placeholder='return state === "done";'>return state === 3;</textarea>
-          <div class="code-line">
-            <span class="code-suffix">}</span>
-          </div>
-        </div>
-      </div>
-
-      <div id="unified-input" class="input-section hidden">
-        <textarea id="unified-code" rows="18" spellcheck="false" placeholder='startState = "start";
+        <div id="unified-input" class="hidden">
+          <textarea id="unified-code" rows="18" spellcheck="false" placeholder='startState = "start";
 
 function transition(state, symbol) {
   return "next";
@@ -73,6 +83,7 @@ function transition(state, symbol) {
 function accept(state) {
   return state === "done";
 }'></textarea>
+        </div>
       </div>
 
       <div id="error-display" class="error-display hidden"></div>
