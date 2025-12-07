@@ -175,6 +175,22 @@ header {
     text-align: center;
     pointer-events: none;
   }
+
+  .graph-tooltip {
+    display: none;
+    position: absolute;
+    background: var(--color-surface-raised);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: var(--space-xs) var(--space-sm);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    color: var(--color-text);
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -182,80 +198,24 @@ header {
    -------------------------------------------------------------------------- */
 .panel-meta {
   background: var(--color-surface);
+  overflow-y: auto;
 
-  .metadata-section {
+  .metadata-section,
+  .test-section,
+  .state-list-section {
     padding: var(--space-lg);
-    border-bottom: 1px solid var(--color-border);
   }
 
+  .metadata-section,
   .test-section {
-    padding: var(--space-lg);
     border-bottom: 1px solid var(--color-border);
-
-    h3 {
-      font-size: var(--font-size-sm);
-      font-weight: 600;
-      color: var(--color-text);
-      margin-bottom: var(--space-md);
-    }
   }
 
-  .help-section {
-    padding: var(--space-lg);
-    flex: 1;
-    overflow-y: auto;
-
-    h3 {
-      font-size: var(--font-size-sm);
-      font-weight: 600;
-      color: var(--color-text);
-      margin-bottom: var(--space-md);
-    }
-
-    p {
-      font-size: var(--font-size-sm);
-      color: var(--color-text-secondary);
-      margin-bottom: var(--space-sm);
-    }
-
-    ul {
-      list-style: none;
-      font-size: var(--font-size-sm);
-      color: var(--color-text-secondary);
-
-      li {
-        margin-bottom: var(--space-xs);
-        padding-left: var(--space-md);
-        position: relative;
-
-        &::before {
-          content: '•';
-          position: absolute;
-          left: 0;
-          color: var(--color-text-muted);
-        }
-
-        strong {
-          color: var(--color-text);
-          font-weight: 500;
-        }
-      }
-    }
-
-    .tip {
-      margin-top: var(--space-md);
-      padding: var(--space-sm) var(--space-md);
-      background: var(--color-surface-raised);
-      border-radius: var(--radius-sm);
-      font-size: var(--font-size-xs);
-      color: var(--color-text-muted);
-
-      code {
-        color: var(--color-syntax-function);
-        font-family: var(--font-mono);
-        font-size: var(--font-size-xs);
-      }
-    }
+  h3 {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: var(--space-md);
   }
 }
 
@@ -283,6 +243,37 @@ header {
   font-size: var(--font-size-sm);
   font-weight: 600;
   font-family: var(--font-mono);
+  color: var(--color-text);
+}
+
+/* --------------------------------------------------------------------------
+   State List
+   -------------------------------------------------------------------------- */
+.state-list {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+
+  &:empty {
+    display: none;
+  }
+}
+
+.state-item {
+  padding: var(--space-xs) 0;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.state-id {
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.state-label {
   color: var(--color-text);
 }
 

@@ -15,7 +15,17 @@ import { NFAVisualizer } from './visualizer.js';
 
 const CONFIG = {
   maxStates: 500,
-  maxValues: 10
+  maxSymbols: 10
+};
+
+/** SessionStorage keys for persisting input fields */
+const STORAGE_KEYS = {
+  startState: 'nfa-start-state',
+  transition: 'nfa-transition',
+  accept: 'nfa-accept',
+  unified: 'nfa-unified-code',
+  unifiedMode: 'nfa-unified-mode',
+  testInput: 'nfa-test-input'
 };
 
 // ============================================
@@ -50,7 +60,8 @@ const elements = {
   // Stats
   statStates: document.getElementById('stat-states'),
   statStart: document.getElementById('stat-start'),
-  statAccept: document.getElementById('stat-accept')
+  statAccept: document.getElementById('stat-accept'),
+  stateList: document.getElementById('state-list')
 };
 
 // ============================================
@@ -68,6 +79,9 @@ let visualizer = null;
  * Initialize the application: set up event listeners and visualizer
  */
 function init() {
+  // Restore saved inputs from sessionStorage
+  restoreFromStorage();
+
   // Set up event listeners
   elements.unifiedToggle.addEventListener('change', handleModeToggle);
   elements.buildBtn.addEventListener('click', handleBuild);
@@ -76,15 +90,64 @@ function init() {
     if (e.key === 'Enter') handleTest();
   });
 
+  // Save inputs on change
+  elements.startStateInput.addEventListener('input', saveToStorage);
+  elements.transitionInput.addEventListener('input', saveToStorage);
+  elements.acceptInput.addEventListener('input', saveToStorage);
+  elements.unifiedCodeInput.addEventListener('input', saveToStorage);
+  elements.testInput.addEventListener('input', saveToStorage);
+
   // Initialize visualizer
   visualizer = new NFAVisualizer(elements.cyContainer);
 
-  // Handle window resize for visualization
+  // Refit visualization on window resize
   window.addEventListener('resize', () => {
-    if (currentNFA && visualizer) {
-      visualizer.fit();
-    }
+    visualizer?.fit();
   });
+
+  // Build NFA on startup
+  handleBuild();
+}
+
+// ============================================
+// Session Storage
+// ============================================
+
+/**
+ * Save current input values to sessionStorage
+ */
+function saveToStorage() {
+  sessionStorage.setItem(STORAGE_KEYS.startState, elements.startStateInput.value);
+  sessionStorage.setItem(STORAGE_KEYS.transition, elements.transitionInput.value);
+  sessionStorage.setItem(STORAGE_KEYS.accept, elements.acceptInput.value);
+  sessionStorage.setItem(STORAGE_KEYS.unified, elements.unifiedCodeInput.value);
+  sessionStorage.setItem(STORAGE_KEYS.unifiedMode, elements.unifiedToggle.checked);
+  sessionStorage.setItem(STORAGE_KEYS.testInput, elements.testInput.value);
+}
+
+/**
+ * Restore input values from sessionStorage
+ */
+function restoreFromStorage() {
+  const startState = sessionStorage.getItem(STORAGE_KEYS.startState);
+  const transition = sessionStorage.getItem(STORAGE_KEYS.transition);
+  const accept = sessionStorage.getItem(STORAGE_KEYS.accept);
+  const unified = sessionStorage.getItem(STORAGE_KEYS.unified);
+  const unifiedMode = sessionStorage.getItem(STORAGE_KEYS.unifiedMode);
+  const testInput = sessionStorage.getItem(STORAGE_KEYS.testInput);
+
+  if (startState !== null) elements.startStateInput.value = startState;
+  if (transition !== null) elements.transitionInput.value = transition;
+  if (accept !== null) elements.acceptInput.value = accept;
+  if (unified !== null) elements.unifiedCodeInput.value = unified;
+  if (testInput !== null) elements.testInput.value = testInput;
+
+  // Restore mode toggle state
+  if (unifiedMode === 'true') {
+    elements.unifiedToggle.checked = true;
+    elements.splitInput.classList.add('hidden');
+    elements.unifiedInput.classList.remove('hidden');
+  }
 }
 
 // ============================================
@@ -120,6 +183,7 @@ function handleModeToggle() {
     elements.splitInput.classList.remove('hidden');
   }
 
+  saveToStorage();
   hideError();
 }
 
@@ -182,6 +246,9 @@ function showResults() {
   elements.statStart.textContent = startStates.size;
   elements.statAccept.textContent = acceptStates.size;
 
+  // Build state list
+  updateStateList();
+
   // Render visualization
   visualizer.render(currentNFA);
 
@@ -191,13 +258,62 @@ function showResults() {
 }
 
 /**
- * Hide test section and visualization
+ * Update the state list display in the info panel
+ */
+function updateStateList() {
+  const states = currentNFA.getStateInfo();
+  const labels = currentNFA.stateLabels;
+
+  const items = states.map(state => {
+    const label = labels?.get(state.id) || `q${state.id}`;
+    const flags = [];
+    if (state.isStart) flags.push('start');
+    if (state.isAccept) flags.push('accept');
+    const flagStr = flags.length > 0 ? ` (${flags.join(', ')})` : '';
+    return `<div class="state-item"><span class="state-id">q${state.id}</span> = <span class="state-label">${escapeHtml(formatStateLabel(label))}</span>${flagStr}</div>`;
+  });
+
+  elements.stateList.innerHTML = items.join('');
+}
+
+/**
+ * Format a state label for display
+ */
+function formatStateLabel(label) {
+  try {
+    const value = JSON.parse(label);
+    if (typeof value === 'string') return `"${value}"`;
+    if (typeof value === 'number') return String(value);
+    if (value === null) return 'null';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  } catch {
+    return label;
+  }
+}
+
+/**
+ * Escape HTML special characters
+ */
+function escapeHtml(str) {
+  return str.replace(/[&<>"']/g, char => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[char]);
+}
+
+/**
+ * Reset UI to empty state
  */
 function hideResults() {
   elements.emptyState.classList.remove('hidden');
   elements.statStates.textContent = '—';
   elements.statStart.textContent = '—';
   elements.statAccept.textContent = '—';
+  elements.stateList.innerHTML = '';
 }
 
 // ============================================

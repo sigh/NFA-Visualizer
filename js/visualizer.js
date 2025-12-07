@@ -176,6 +176,9 @@ export class NFAVisualizer {
       this.cy.destroy();
     }
 
+    // Create tooltip element if it doesn't exist
+    this.ensureTooltip();
+
     // Create new Cytoscape instance
     this.cy = cytoscape({
       container: this.container,
@@ -187,8 +190,49 @@ export class NFAVisualizer {
       maxZoom: 3
     });
 
+    // Setup tooltip events
+    this.setupTooltipEvents();
+
     // Fit to container with padding
     this.cy.fit(50);
+  }
+
+  /**
+   * Ensure tooltip element exists
+   */
+  ensureTooltip() {
+    if (!this.tooltip) {
+      this.tooltip = document.createElement('div');
+      this.tooltip.className = 'graph-tooltip';
+      this.container.appendChild(this.tooltip);
+    }
+  }
+
+  /**
+   * Setup tooltip mouse events
+   */
+  setupTooltipEvents() {
+    // Show tooltip on node hover
+    this.cy.on('mouseover', 'node:not(.start-marker)', (event) => {
+      const node = event.target;
+      const fullLabel = node.data('fullLabel');
+      if (fullLabel) {
+        this.tooltip.textContent = fullLabel;
+        this.tooltip.style.display = 'block';
+      }
+    });
+
+    // Update tooltip position on mouse move
+    this.cy.on('mousemove', 'node:not(.start-marker)', (event) => {
+      const renderedPos = event.renderedPosition;
+      this.tooltip.style.left = `${renderedPos.x + 15}px`;
+      this.tooltip.style.top = `${renderedPos.y - 10}px`;
+    });
+
+    // Hide tooltip when leaving node
+    this.cy.on('mouseout', 'node', () => {
+      this.tooltip.style.display = 'none';
+    });
   }
 
   /**
@@ -209,7 +253,8 @@ export class NFAVisualizer {
       elements.push({
         data: {
           id: `s${state.id}`,
-          label: this.getStateLabel(state.id)
+          label: this.getStateLabel(state.id),
+          fullLabel: this.getFullStateLabel(state.id)
         },
         classes: classes.join(' ')
       });
@@ -308,25 +353,25 @@ export class NFAVisualizer {
   }
 
   /**
-   * Get display label for a state
+   * Get display label for a state (just the number for graph clarity)
    * @param {number} stateId
    * @returns {string}
    */
   getStateLabel(stateId) {
-    if (this.nfa.stateLabels?.has(stateId)) {
-      const label = this.nfa.stateLabels.get(stateId);
-      try {
-        const value = JSON.parse(label);
-        if (typeof value === 'string') return value;
-        if (typeof value === 'number') return String(value);
-        if (value === null) return 'null';
-        if (typeof value === 'object') return JSON.stringify(value);
-        return String(value);
-      } catch {
-        return label;
-      }
-    }
     return `q${stateId}`;
+  }
+
+  /**
+   * Get full label for a state (used in tooltips)
+   * @param {number} stateId
+   * @returns {string}
+   */
+  getFullStateLabel(stateId) {
+    const stateLabel = this.nfa.stateLabels.get(stateId);
+    if (stateLabel === null || stateLabel === undefined) {
+      return `q${stateId}`;
+    }
+    return `q${stateId}: ${stateLabel}`;
   }
 
   /**

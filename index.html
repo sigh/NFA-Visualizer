@@ -21,7 +21,7 @@
         <h2>Configuration</h2>
         <label class="toggle-label">
           <input type="checkbox" id="unified-toggle">
-          <span>Unified</span>
+          <span>Unified code</span>
         </label>
       </div>
 
@@ -36,13 +36,13 @@
         </div>
 
         <div class="code-block">
-          <div class="code-comment">// Returns next state(s) given current state and input value.</div>
+          <div class="code-comment">// Returns next state(s) given current state and input symbol.</div>
           <div class="code-line">
-            <span class="code-prefix">function transition(state, value) {</span>
+            <span class="code-prefix">function transition(state, symbol) {</span>
           </div>
           <textarea id="transition-fn" rows="8" spellcheck="false" placeholder='return "next";'>// Count: accepts sequences summing to 3
-if (state + value <= 3) {
-  return state + value;
+if (state + symbol <= 3) {
+  return state + symbol;
 }
 return undefined;</textarea>
           <div class="code-line">
@@ -66,7 +66,7 @@ return undefined;</textarea>
       <div id="unified-input" class="input-section hidden">
         <textarea id="unified-code" rows="18" spellcheck="false" placeholder='startState = "start";
 
-function transition(state, value) {
+function transition(state, symbol) {
   return "next";
 }
 
@@ -123,15 +123,9 @@ function accept(state) {
         <div id="test-result" class="test-result"></div>
       </div>
 
-      <div class="help-section">
-        <h3>Quick Help</h3>
-        <p>Define a finite-state machine using JavaScript functions.</p>
-        <ul>
-          <li><strong>startState:</strong> Initial state value</li>
-          <li><strong>transition:</strong> Returns next state(s)</li>
-          <li><strong>accept:</strong> Returns true for valid final states</li>
-        </ul>
-        <p class="tip">Tip: Use <code>console.log()</code> for debugging.</p>
+      <div class="state-list-section">
+        <h3>All States</h3>
+        <div id="state-list" class="state-list"></div>
       </div>
     </section>
   </main>

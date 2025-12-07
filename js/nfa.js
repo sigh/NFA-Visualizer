@@ -16,8 +16,8 @@
 /** Default maximum number of states before throwing an error */
 const DEFAULT_MAX_STATES = 1000;
 
-/** Default maximum input value to explore during NFA construction */
-const DEFAULT_MAX_VALUES = 10;
+/** Default maximum symbol value to explore during NFA construction */
+const DEFAULT_MAX_SYMBOLS = 10;
 
 // ============================================
 // NFA Class
@@ -166,10 +166,7 @@ export class NFA {
         states: [...currentStates]
       });
 
-      // Early termination on dead end
-      if (currentStates.size === 0) {
-        break;
-      }
+      if (currentStates.size === 0) break;
     }
 
     // Accept if any current state is accepting
@@ -224,18 +221,18 @@ export class NFABuilder {
   /**
    * @param {Object} config - NFA configuration
    * @param {any} config.startState - Initial state value (or array for multiple)
-   * @param {Function} config.transition - (state, value) => nextState(s)
+   * @param {Function} config.transition - (state, symbol) => nextState(s)
    * @param {Function} config.accept - (state) => boolean
    * @param {Object} options - Builder options
    * @param {number} options.maxStates - Maximum states before error
-   * @param {number} options.maxValues - Maximum input value to explore
+   * @param {number} options.maxSymbols - Maximum symbol value to explore
    */
   constructor(config, options = {}) {
     this.startState = config.startState;
     this.transitionFn = config.transition;
     this.acceptFn = config.accept;
     this.maxStates = options.maxStates || DEFAULT_MAX_STATES;
-    this.maxValues = options.maxValues || DEFAULT_MAX_VALUES;
+    this.maxSymbols = options.maxSymbols || DEFAULT_MAX_SYMBOLS;
   }
 
   /**
@@ -297,16 +294,16 @@ export class NFABuilder {
       const stateStr = idToStateStr.get(currentId);
       const stateValue = this._deserializeState(stateStr);
 
-      // Try all possible input values
-      for (let value = 1; value <= this.maxValues; value++) {
-        const nextStates = this._normalizeToArray(this.transitionFn(stateValue, value));
+      // Try all possible input symbols
+      for (let symbol = 1; symbol <= this.maxSymbols; symbol++) {
+        const nextStates = this._normalizeToArray(this.transitionFn(stateValue, symbol));
 
         for (const nextState of nextStates) {
           if (nextState === undefined) continue;
 
           const nextStateStr = this._serializeState(nextState);
           const nextId = addState(nextStateStr);
-          nfa.addTransition(currentId, nextId, value);
+          nfa.addTransition(currentId, nextId, symbol);
 
           if (!visited.has(nextId)) {
             stack.push(nextId);
@@ -360,7 +357,7 @@ export class NFABuilder {
  *
  * The code should define:
  * - startState: initial state value
- * - transition(state, value): returns next state(s)
+ * - transition(state, symbol): returns next state(s)
  * - accept(state): returns true if accepting
  *
  * @param {string} code - User's JavaScript code
@@ -415,7 +412,7 @@ export function buildCodeFromSplit(startStateCode, transitionBody, acceptBody) {
 
   return `startState = ${startStateCode};
 
-function transition(state, value) {
+function transition(state, symbol) {
 ${indentedTransition}
 }
 
@@ -445,7 +442,7 @@ export function parseSplitFromCode(code) {
 
   // Extract transition function body
   const transitionMatch = code.match(
-    /function\s+transition\s*\(\s*state\s*,\s*value\s*\)\s*\{([\s\S]*?)\n\}/
+    /function\s+transition\s*\(\s*state\s*,\s*symbol\s*\)\s*\{([\s\S]*?)\n\}/
   );
   if (transitionMatch) {
     result.transitionBody = transitionMatch[1]
