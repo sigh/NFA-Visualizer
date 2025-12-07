@@ -246,6 +246,15 @@ header {
   color: var(--color-text);
 }
 
+.stat-value-dead {
+  color: var(--color-text-muted);
+}
+
+.toggle-small {
+  margin-top: var(--space-md);
+  font-size: var(--font-size-xs);
+}
+
 /* --------------------------------------------------------------------------
    State List
    -------------------------------------------------------------------------- */

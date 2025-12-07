@@ -24,9 +24,14 @@ const COLORS = {
   stateStroke: '#5a5a6a',
   startState: '#60a5fa',
   acceptState: '#4ade80',
+  deadState: '#2a2a30',
+  deadStateStroke: '#3a3a42',
+  deadText: '#a0a0a8',
   text: '#f5f5f7',
+  textMuted: '#6a6a75',
   transition: '#6a6a7a',
   transitionText: '#d0d0d8',
+  transitionMuted: '#3a3a42',
   highlight: '#fbbf24'
 };
 
@@ -146,21 +151,131 @@ const CYTOSCAPE_STYLE = [
       'target-arrow-shape': 'triangle',
       'curve-style': 'straight'
     }
+  },
+  // Dead state (cannot reach accept)
+  {
+    selector: 'node.dead',
+    style: {
+      'background-color': COLORS.deadState,
+      'border-color': COLORS.deadStateStroke,
+      'border-style': 'dashed',
+      'color': COLORS.deadText
+    }
+  },
+  // Edges from/to dead states
+  {
+    selector: 'edge.dead',
+    style: {
+      'line-color': COLORS.transitionMuted,
+      'target-arrow-color': COLORS.transitionMuted,
+      'line-style': 'dashed',
+      'color': COLORS.deadText
+    }
+  },
+  // Hidden elements (for toggle without layout change)
+  {
+    selector: '.hidden',
+    style: {
+      'display': 'none'
+    }
   }
 ];
+
+// ============================================
+// Symbol Label Compression
+// ============================================
+
+/**
+ * Compress a list of symbols into a compact regex-like character class string.
+ * Consecutive characters are collapsed into ranges (e.g., 1,2,3,5,7,8,9 → 1-357-9)
+ *
+ * @param {Array<string|number>} symbols - Array of symbols
+ * @returns {string} Compact label
+ */
+function compactSymbolLabel(symbols) {
+  if (symbols.length === 0) return '';
+  if (symbols.length === 1) return String(symbols[0]);
+
+  // Convert to strings and sort
+  const strs = symbols.map(String).sort((a, b) => {
+    // Sort numbers numerically, then letters
+    const aNum = Number(a), bNum = Number(b);
+    const aIsNum = !isNaN(aNum) && a.length === 1;
+    const bIsNum = !isNaN(bNum) && b.length === 1;
+    if (aIsNum && bIsNum) return aNum - bNum;
+    if (aIsNum) return -1;
+    if (bIsNum) return 1;
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+
+  // Build ranges for single characters
+  const result = [];
+  let rangeStart = null;
+  let rangeEnd = null;
+
+  const flushRange = () => {
+    if (rangeStart === null) return;
+    const len = rangeEnd.charCodeAt(0) - rangeStart.charCodeAt(0);
+    if (len >= 2) {
+      result.push(`${rangeStart}-${rangeEnd}`);
+    } else if (len === 1) {
+      result.push(rangeStart, rangeEnd);
+    } else {
+      result.push(rangeStart);
+    }
+    rangeStart = rangeEnd = null;
+  };
+
+  for (const s of strs) {
+    // Only single characters can form ranges
+    if (s.length !== 1) {
+      flushRange();
+      result.push(s);
+      continue;
+    }
+
+    const code = s.charCodeAt(0);
+
+    if (rangeStart === null) {
+      rangeStart = rangeEnd = s;
+    } else if (code === rangeEnd.charCodeAt(0) + 1) {
+      // Extend range
+      rangeEnd = s;
+    } else {
+      // End current range, start new one
+      flushRange();
+      rangeStart = rangeEnd = s;
+    }
+  }
+
+  flushRange();
+  return result.join('');
+}
 
 // ============================================
 // NFAVisualizer Class
 // ============================================
 
 export class NFAVisualizer {
-  /**
-   * @param {HTMLElement} container - The container element for Cytoscape
-   */
   constructor(container) {
     this.container = container;
     this.cy = null;
     this.nfa = null;
+    this.hideDeadStates = false;
+  }
+
+  /** Set whether to hide dead states */
+  setHideDeadStates(hide) {
+    if (this.hideDeadStates === hide) return;
+    this.hideDeadStates = hide;
+    if (this.cy) {
+      // Toggle visibility without re-rendering
+      if (hide) {
+        this.cy.$('.dead').addClass('hidden');
+      } else {
+        this.cy.$('.dead').removeClass('hidden');
+      }
+    }
   }
 
   /**
@@ -190,6 +305,11 @@ export class NFAVisualizer {
       maxZoom: 3
     });
 
+    // Apply current visibility state
+    if (this.hideDeadStates) {
+      this.cy.$('.dead').addClass('hidden');
+    }
+
     // Setup tooltip events
     this.setupTooltipEvents();
 
@@ -201,11 +321,13 @@ export class NFAVisualizer {
    * Ensure tooltip element exists
    */
   ensureTooltip() {
-    if (!this.tooltip) {
-      this.tooltip = document.createElement('div');
-      this.tooltip.className = 'graph-tooltip';
-      this.container.appendChild(this.tooltip);
+    // Check if tooltip already exists and is still in DOM
+    if (this.tooltip && this.tooltip.parentNode === this.container) {
+      return;
     }
+    this.tooltip = document.createElement('div');
+    this.tooltip.className = 'graph-tooltip';
+    this.container.appendChild(this.tooltip);
   }
 
   /**
@@ -237,18 +359,22 @@ export class NFAVisualizer {
 
   /**
    * Build Cytoscape elements from NFA
-   * @returns {Array} Cytoscape elements array
    */
   buildElements() {
     const elements = [];
     const states = this.nfa.getStateInfo();
     const transitions = this.nfa.getAllTransitions();
 
-    // Add state nodes
+    const deadStateIds = new Set();
+
+    // Add state nodes (always include all states for consistent layout)
     states.forEach(state => {
+      if (state.isDead) deadStateIds.add(state.id);
+
       const classes = [];
       if (state.isStart) classes.push('start');
       if (state.isAccept) classes.push('accept');
+      if (state.isDead) classes.push('dead');
 
       elements.push({
         data: {
@@ -282,7 +408,11 @@ export class NFAVisualizer {
     // Add edges
     grouped.forEach(({ from, to, symbols }, key) => {
       const isLoop = from === to;
-      const label = symbols.join(', ');
+      const isDead = deadStateIds.has(from) || deadStateIds.has(to);
+      const label = compactSymbolLabel(symbols);
+      const classes = [];
+      if (isLoop) classes.push('loop');
+      if (isDead) classes.push('dead');
 
       elements.push({
         data: {
@@ -291,7 +421,7 @@ export class NFAVisualizer {
           target: `s${to}`,
           label: label
         },
-        classes: isLoop ? 'loop' : ''
+        classes: classes.join(' ')
       });
     });
 

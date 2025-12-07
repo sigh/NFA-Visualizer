@@ -8,6 +8,7 @@
 
 import { NFABuilder, parseNFAConfig, buildCodeFromSplit, parseSplitFromCode, expandSymbolClass, DEFAULT_SYMBOL_CLASS } from './nfa.js';
 import { NFAVisualizer } from './visualizer.js';
+import { escapeHtml } from './util.js';
 
 // ============================================
 // Configuration
@@ -62,6 +63,10 @@ const elements = {
   statStates: document.getElementById('stat-states'),
   statStart: document.getElementById('stat-start'),
   statAccept: document.getElementById('stat-accept'),
+  statDead: document.getElementById('stat-dead'),
+  deadStatRow: document.getElementById('dead-stat-row'),
+  hideDeadRow: document.getElementById('hide-dead-row'),
+  hideDeadToggle: document.getElementById('hide-dead-toggle'),
   stateList: document.getElementById('state-list')
 };
 
@@ -101,6 +106,11 @@ function init() {
 
   // Initialize visualizer
   visualizer = new NFAVisualizer(elements.cyContainer);
+
+  // Hide dead states toggle
+  elements.hideDeadToggle.addEventListener('change', () => {
+    visualizer.setHideDeadStates(elements.hideDeadToggle.checked);
+  });
 
   // Refit visualization on window resize
   window.addEventListener('resize', () => {
@@ -251,9 +261,21 @@ function showResults() {
 
   // Update stats display
   const { startStates, acceptStates } = currentNFA;
+  const deadStates = currentNFA.getDeadStates();
+
   elements.statStates.textContent = currentNFA.numStates();
   elements.statStart.textContent = startStates.size;
   elements.statAccept.textContent = acceptStates.size;
+
+  // Show/hide dead state info based on whether there are any
+  if (deadStates.size > 0) {
+    elements.statDead.textContent = deadStates.size;
+    elements.deadStatRow.style.display = '';
+    elements.hideDeadRow.style.display = '';
+  } else {
+    elements.deadStatRow.style.display = 'none';
+    elements.hideDeadRow.style.display = 'none';
+  }
 
   // Build state list
   updateStateList();
@@ -278,36 +300,12 @@ function updateStateList() {
     const flags = [];
     if (state.isStart) flags.push('start');
     if (state.isAccept) flags.push('accept');
+    if (state.isDead) flags.push('dead');
     const flagStr = flags.length > 0 ? ` (${flags.join(', ')})` : '';
-    return `<div class="state-item"><span class="state-id">q${state.id}</span> = <span class="state-label">${escapeHtml(formatStateLabel(label))}</span>${flagStr}</div>`;
+    return `<div class="state-item"><span class="state-id">q${state.id}</span> = <span class="state-label">${escapeHtml(label)}</span>${flagStr}</div>`;
   });
 
   elements.stateList.innerHTML = items.join('');
-}
-
-/**
- * Format a state label for display
- */
-function formatStateLabel(label) {
-  try {
-    const value = JSON.parse(label);
-    if (typeof value === 'string') return `"${value}"`;
-    if (typeof value === 'number') return String(value);
-    if (value === null) return 'null';
-    if (typeof value === 'object') return JSON.stringify(value);
-    return String(value);
-  } catch {
-    return label;
-  }
-}
-
-const HTML_ENTITIES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-
-/**
- * Escape HTML special characters
- */
-function escapeHtml(str) {
-  return str.replace(/[&<>"']/g, c => HTML_ENTITIES[c]);
 }
 
 /**

@@ -147,11 +147,57 @@ export class NFA {
 
   /** Get state information for visualization */
   getStateInfo() {
+    const deadStates = this.getDeadStates();
     return this._transitions.map((_, id) => ({
       id,
       isStart: this.startStates.has(id),
-      isAccept: this.acceptStates.has(id)
+      isAccept: this.acceptStates.has(id),
+      isDead: deadStates.has(id)
     }));
+  }
+
+  /**
+   * Find all "dead" states - states from which no accept state is reachable.
+   * Uses backward reachability: find all states that can reach an accept state.
+   */
+  getDeadStates() {
+    const numStates = this._transitions.length;
+    if (numStates === 0) return new Set();
+
+    // Build reverse transition graph
+    const reverseTransitions = Array.from({ length: numStates }, () => new Set());
+    for (let fromId = 0; fromId < numStates; fromId++) {
+      for (const targets of this._transitions[fromId].values()) {
+        for (const toId of targets) {
+          reverseTransitions[toId].add(fromId);
+        }
+      }
+    }
+
+    // BFS backward from accept states to find all states that can reach accept
+    const canReachAccept = new Set(this.acceptStates);
+    const queue = [...this.acceptStates];
+    let queueHead = 0;
+
+    while (queueHead < queue.length) {
+      const stateId = queue[queueHead++];
+      for (const fromId of reverseTransitions[stateId]) {
+        if (!canReachAccept.has(fromId)) {
+          canReachAccept.add(fromId);
+          queue.push(fromId);
+        }
+      }
+    }
+
+    // Dead states are those that cannot reach any accept state
+    const deadStates = new Set();
+    for (let id = 0; id < numStates; id++) {
+      if (!canReachAccept.has(id)) {
+        deadStates.add(id);
+      }
+    }
+
+    return deadStates;
   }
 }
 
