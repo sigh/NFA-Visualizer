@@ -9,6 +9,8 @@
  * @module nfa
  */
 
+import { canonicalJSON } from './util.js';
+
 // ============================================
 // Constants
 // ============================================
@@ -39,179 +41,113 @@ const ALL_SYMBOLS = [
 // ============================================
 
 /**
- * Represents a Non-deterministic Finite Automaton
- *
- * States are identified by numeric IDs. Each state can have multiple
- * transitions for the same symbol (non-determinism).
+ * Represents a Non-deterministic Finite Automaton.
+ * States are identified by sequential numeric IDs.
  */
 export class NFA {
   constructor() {
-    /** @type {Map<number, {transitions: Map<any, Set<number>>}>} */
-    this.states = new Map();
-
+    /** @type {Array<Map<any, Set<number>>>} Transitions per state */
+    this._transitions = [];
     /** @type {Set<number>} */
     this.startStates = new Set();
-
     /** @type {Set<number>} */
     this.acceptStates = new Set();
-
-    /** @type {Map<number, string>} State ID to label mapping for visualization */
+    /** @type {Map<number, string>} State ID to label for visualization */
     this.stateLabels = new Map();
-
-    /** @private */
-    this._stateCounter = 0;
   }
 
-  /**
-   * Add a new state to the NFA
-   * @param {boolean} accepting - Whether this is an accepting state
-   * @returns {number} The ID of the newly created state
-   */
+  /** Add a new state, returns its ID */
   addState(accepting = false) {
-    const id = this._stateCounter++;
-    this.states.set(id, { transitions: new Map() });
-    if (accepting) {
-      this.acceptStates.add(id);
-    }
+    const id = this._transitions.length;
+    this._transitions.push(new Map());
+    if (accepting) this.acceptStates.add(id);
     return id;
   }
 
-  /**
-   * Mark a state as a start state
-   * @param {number} stateId
-   */
+  /** Mark a state as a start state */
   setStart(stateId) {
     this.startStates.add(stateId);
   }
 
-  /**
-   * Mark a state as an accepting state
-   * @param {number} stateId
-   */
+  /** Mark a state as an accepting state */
   setAccept(stateId) {
     this.acceptStates.add(stateId);
   }
 
-  /**
-   * Add a transition between states
-   * @param {number} fromState - Source state ID
-   * @param {number} toState - Target state ID
-   * @param {any} symbol - The transition symbol
-   */
+  /** Add a transition from one state to another on a symbol */
   addTransition(fromState, toState, symbol) {
-    const state = this.states.get(fromState);
-    if (!state) return;
+    const transitions = this._transitions[fromState];
+    if (!transitions) return;
 
-    if (!state.transitions.has(symbol)) {
-      state.transitions.set(symbol, new Set());
+    if (!transitions.has(symbol)) {
+      transitions.set(symbol, new Set());
     }
-    state.transitions.get(symbol).add(toState);
+    transitions.get(symbol).add(toState);
   }
 
-  /**
-   * Get all states reachable from a state on a given symbol
-   * @param {number} stateId
-   * @param {any} symbol
-   * @returns {Set<number>}
-   */
+  /** Get all states reachable from a state on a given symbol */
   getTransitions(stateId, symbol) {
-    const state = this.states.get(stateId);
-    if (!state) return new Set();
-    return state.transitions.get(symbol) || new Set();
+    const transitions = this._transitions[stateId];
+    if (!transitions) return new Set();
+    return transitions.get(symbol) || new Set();
   }
 
-  /**
-   * Check if a state is accepting
-   * @param {number} stateId
-   * @returns {boolean}
-   */
   isAccepting(stateId) {
     return this.acceptStates.has(stateId);
   }
 
-  /**
-   * Check if a state is a start state
-   * @param {number} stateId
-   * @returns {boolean}
-   */
   isStart(stateId) {
     return this.startStates.has(stateId);
   }
 
-  /**
-   * Get the total number of states
-   * @returns {number}
-   */
   numStates() {
-    return this.states.size;
+    return this._transitions.length;
   }
 
   /**
-   * Run the NFA on an input sequence
-   *
-   * Uses the standard NFA simulation: track all possible current states
-   * and for each input, compute the union of all reachable next states.
-   *
-   * @param {any[]} inputSequence - Array of input symbols
-   * @returns {{accepted: boolean, trace: Array}} Result with execution trace
+   * Run the NFA on an input sequence.
+   * Returns whether accepted and an execution trace.
    */
   run(inputSequence) {
     let currentStates = new Set(this.startStates);
-
-    const trace = [{
-      step: 0,
-      input: null,
-      states: [...currentStates]
-    }];
+    const trace = [{ step: 0, input: null, states: [...currentStates] }];
 
     for (let i = 0; i < inputSequence.length; i++) {
-      const value = inputSequence[i];
+      const symbol = inputSequence[i];
       const nextStates = new Set();
 
       for (const stateId of currentStates) {
-        for (const target of this.getTransitions(stateId, value)) {
+        for (const target of this.getTransitions(stateId, symbol)) {
           nextStates.add(target);
         }
       }
 
       currentStates = nextStates;
-      trace.push({
-        step: i + 1,
-        input: value,
-        states: [...currentStates]
-      });
+      trace.push({ step: i + 1, input: symbol, states: [...currentStates] });
 
       if (currentStates.size === 0) break;
     }
 
-    // Accept if any current state is accepting
     const accepted = [...currentStates].some(id => this.isAccepting(id));
-
     return { accepted, trace };
   }
 
-  /**
-   * Get all transitions for visualization
-   * @returns {Array<{from: number, to: number, symbol: any}>}
-   */
+  /** Get all transitions for visualization */
   getAllTransitions() {
-    const transitions = [];
-    for (const [fromId, state] of this.states) {
-      for (const [symbol, targets] of state.transitions) {
+    const result = [];
+    for (let fromId = 0; fromId < this._transitions.length; fromId++) {
+      for (const [symbol, targets] of this._transitions[fromId]) {
         for (const toId of targets) {
-          transitions.push({ from: fromId, to: toId, symbol });
+          result.push({ from: fromId, to: toId, symbol });
         }
       }
     }
-    return transitions;
+    return result;
   }
 
-  /**
-   * Get state information for visualization
-   * @returns {Array<{id: number, isStart: boolean, isAccept: boolean}>}
-   */
+  /** Get state information for visualization */
   getStateInfo() {
-    return [...this.states.keys()].map(id => ({
+    return this._transitions.map((_, id) => ({
       id,
       isStart: this.startStates.has(id),
       isAccept: this.acceptStates.has(id)
@@ -262,6 +198,10 @@ export class NFABuilder {
     const stateStrToId = new Map();
     const idToStateStr = new Map();
 
+    // Wrap user functions to provide better error messages
+    const wrappedAccept = this._wrapAcceptFn(this.acceptFn);
+    const wrappedTransition = this._wrapTransitionFn(this.transitionFn);
+
     /**
      * Add a state to the NFA, returning existing ID if already added
      */
@@ -270,13 +210,16 @@ export class NFABuilder {
         return stateStrToId.get(stateStr);
       }
 
+      if (nfa.numStates() >= this.maxStates) {
+        throw new Error(`NFA exceeded maximum state limit (${this.maxStates}). Consider simplifying your state machine.`);
+      }
+
       const id = nfa.addState();
       stateStrToId.set(stateStr, id);
       idToStateStr.set(id, stateStr);
 
       // Check if this state is accepting
-      const stateValue = this._deserializeState(stateStr);
-      if (this.acceptFn(stateValue)) {
+      if (wrappedAccept(stateStr)) {
         nfa.setAccept(id);
       }
 
@@ -284,44 +227,38 @@ export class NFABuilder {
     };
 
     // Initialize with start states
-    const stack = [];
+    // Use array-based queue with head pointer for O(1) dequeue
+    const queue = [];
+    let queueHead = 0;
     const startStates = this._normalizeToArray(this.startState);
 
     for (const startState of startStates) {
       const stateStr = this._serializeState(startState);
       const id = addState(stateStr);
       nfa.setStart(id);
-      stack.push(id);
+      queue.push(id);
     }
 
-    // Explore all reachable states using DFS
+    // Explore all reachable states using BFS for nicer state numbering
     const visited = new Set();
 
-    while (stack.length > 0) {
-      if (nfa.numStates() > this.maxStates) {
-        throw new Error(`NFA exceeded maximum state limit (${this.maxStates}). Consider simplifying your state machine.`);
-      }
-
-      const currentId = stack.pop();
+    while (queueHead < queue.length) {
+      const currentId = queue[queueHead++];
       if (visited.has(currentId)) continue;
       visited.add(currentId);
 
       const stateStr = idToStateStr.get(currentId);
-      const stateValue = this._deserializeState(stateStr);
 
       // Try all configured symbols
       for (const symbol of this.symbols) {
-        const nextStates = this._normalizeToArray(this.transitionFn(stateValue, symbol));
+        const nextStateStrs = wrappedTransition(stateStr, symbol);
 
-        for (const nextState of nextStates) {
-          if (nextState === undefined) continue;
-
-          const nextStateStr = this._serializeState(nextState);
+        for (const nextStateStr of nextStateStrs) {
           const nextId = addState(nextStateStr);
           nfa.addTransition(currentId, nextId, symbol);
 
           if (!visited.has(nextId)) {
-            stack.push(nextId);
+            queue.push(nextId);
           }
         }
       }
@@ -334,24 +271,57 @@ export class NFABuilder {
   }
 
   /**
-   * Normalize a value to an array (handles single values, arrays, undefined)
+   * Wrap the transition function to handle errors and normalize output
    * @private
    */
-  _normalizeToArray(value) {
-    if (Array.isArray(value)) return value;
-    if (value === undefined) return [];
-    return [value];
+  _wrapTransitionFn(fn) {
+    return (stateStr, symbol) => {
+      const stateValue = this._deserializeState(stateStr);
+      try {
+        const result = fn(stateValue, symbol);
+        const nextStates = this._normalizeToArray(result);
+        return nextStates
+          .filter(s => s !== undefined)
+          .map(s => this._serializeState(s));
+      } catch (err) {
+        throw new Error(
+          `Transition function threw for (${stateStr}, ${symbol}): ${err?.message || err}`);
+      }
+    };
   }
 
   /**
-   * Serialize a state value to a string for use as map key
+   * Wrap the accept function to handle errors
+   * @private
+   */
+  _wrapAcceptFn(fn) {
+    return (stateStr) => {
+      const stateValue = this._deserializeState(stateStr);
+      try {
+        return !!fn(stateValue);
+      } catch (err) {
+        throw new Error(
+          `Accept function threw for ${stateStr}: ${err?.message || err}`);
+      }
+    };
+  }
+
+  /** Normalize a value to an array */
+  _normalizeToArray(value) {
+    if (value === undefined) return [];
+    return Array.isArray(value) ? value : [value];
+  }
+
+  /**
+   * Serialize a state value to a canonical string for use as map key.
+   * Objects are serialized with sorted keys for order-independence.
    * @private
    */
   _serializeState(state) {
     if (Array.isArray(state)) {
       throw new Error('State cannot be an array (arrays are reserved for multiple states)');
     }
-    return JSON.stringify(state);
+    return canonicalJSON(state);
   }
 
   /**
