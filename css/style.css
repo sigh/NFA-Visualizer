@@ -1,0 +1,391 @@
+/**
+ * NFA Visualizer Styles
+ * Clean, minimal dark theme with CSS nesting
+ */
+
+/* ============================================
+   CSS Custom Properties (Design Tokens)
+   ============================================ */
+:root {
+  /* Colors */
+  --color-bg: #1a1a2e;
+  --color-surface: #16213e;
+  --color-border: #0f3460;
+  --color-code-bg: #0d1117;
+
+  --color-text: #e8e8e8;
+  --color-text-muted: #8b8b8b;
+  --color-comment: #6a9955;
+  --color-keyword: #569cd6;
+
+  --color-accent: #0096ff;
+  --color-accent-hover: #0077cc;
+  --color-error: #ff4757;
+  --color-success: #2ed573;
+  --color-highlight: #ffc107;
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+
+  /* Spacing */
+  --spacing-xs: 5px;
+  --spacing-sm: 10px;
+  --spacing-md: 15px;
+  --spacing-lg: 20px;
+  --spacing-xl: 25px;
+
+  /* Border Radius */
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+}
+
+/* ============================================
+   Base Styles
+   ============================================ */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  margin: 0;
+  padding: var(--spacing-lg);
+  line-height: 1.5;
+}
+
+/* ============================================
+   Typography
+   ============================================ */
+h1 {
+  text-align: center;
+  color: var(--color-accent);
+  margin-bottom: 30px;
+  font-weight: 300;
+}
+
+h2 {
+  font-size: 1.1rem;
+  font-weight: 500;
+  margin: 0 0 var(--spacing-md) 0;
+  color: var(--color-text-muted);
+}
+
+/* ============================================
+   Layout
+   ============================================ */
+.container {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ============================================
+   Description Section
+   ============================================ */
+.description {
+  margin-bottom: var(--spacing-xl);
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+
+  p {
+    margin: 0 0 var(--spacing-sm) 0;
+  }
+
+  .tip {
+    font-style: italic;
+
+    code {
+      background: var(--color-code-bg);
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: 0.9em;
+    }
+  }
+}
+
+/* ============================================
+   Input Header (Name + Toggle)
+   ============================================ */
+.input-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-lg);
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+}
+
+.name-field {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+
+  label {
+    color: var(--color-text-muted);
+  }
+
+  input {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    font-size: 0.95rem;
+    width: 180px;
+
+    &:focus {
+      outline: none;
+      border-color: var(--color-accent);
+    }
+  }
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+
+  input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--color-accent);
+  }
+}
+
+/* ============================================
+   Input Sections (Split & Unified)
+   ============================================ */
+.input-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+}
+
+/* ============================================
+   Code Block Styling
+   ============================================ */
+.code-block {
+  margin-bottom: var(--spacing-lg);
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.code-comment {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--color-comment);
+  margin-bottom: var(--spacing-xs);
+}
+
+.code-line {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+}
+
+.code-prefix,
+.code-suffix {
+  color: var(--color-keyword);
+  white-space: nowrap;
+}
+
+/* ============================================
+   Form Elements
+   ============================================ */
+textarea {
+  background: var(--color-code-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-md);
+  resize: vertical;
+  width: 100%;
+  line-height: 1.5;
+
+  &:focus {
+    outline: none;
+    border-color: var(--color-accent);
+  }
+}
+
+#start-state {
+  flex: 1;
+  resize: none;
+  padding: var(--spacing-xs) 8px;
+  margin: 0 var(--spacing-xs);
+}
+
+#unified-code {
+  min-height: 350px;
+}
+
+/* ============================================
+   Error Display
+   ============================================ */
+.error-display {
+  background: rgba(255, 71, 87, 0.1);
+  border: 1px solid var(--color-error);
+  color: var(--color-error);
+  padding: 12px var(--spacing-md);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--spacing-lg);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+
+/* ============================================
+   Buttons
+   ============================================ */
+.button-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+}
+
+.primary-btn {
+  background: var(--color-accent);
+  color: white;
+  border: none;
+  padding: var(--spacing-sm) 24px;
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.2s;
+
+  &:hover {
+    background: var(--color-accent-hover);
+  }
+
+  &:active {
+    transform: translateY(1px);
+  }
+}
+
+/* ============================================
+   Test Section
+   ============================================ */
+.test-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  margin-top: var(--spacing-lg);
+}
+
+.test-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+
+  label {
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+  }
+
+  input {
+    flex: 1;
+    min-width: 150px;
+    background: var(--color-code-bg);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+
+    &:focus {
+      outline: none;
+      border-color: var(--color-accent);
+    }
+  }
+
+  button {
+    background: var(--color-border);
+    color: var(--color-text);
+    border: none;
+    padding: 8px 16px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background 0.2s;
+
+    &:hover {
+      background: #1a4980;
+    }
+  }
+}
+
+.test-result {
+  margin-top: var(--spacing-md);
+  padding: 12px var(--spacing-md);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+
+  &:empty {
+    display: none;
+  }
+
+  &.accepted {
+    background: rgba(46, 213, 115, 0.1);
+    border: 1px solid var(--color-success);
+    color: var(--color-success);
+  }
+
+  &.rejected {
+    background: rgba(255, 71, 87, 0.1);
+    border: 1px solid var(--color-error);
+    color: var(--color-error);
+  }
+}
+
+/* ============================================
+   Visualization Section
+   ============================================ */
+.visualization-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  margin-top: var(--spacing-lg);
+}
+
+.viz-controls {
+  margin-bottom: var(--spacing-md);
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+#nfa-canvas-container {
+  background: var(--color-code-bg);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+#nfa-canvas {
+  display: block;
+  width: 100%;
+  height: 400px;
+}
