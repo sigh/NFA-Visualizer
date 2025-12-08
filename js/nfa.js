@@ -38,10 +38,18 @@ const ALL_SYMBOLS =
 /**
  * Represents a Non-deterministic Finite Automaton.
  * States are identified by sequential numeric IDs.
+ * Transitions stored as sparse 3D array: _transitions[fromState][symbolIndex] = [toStates]
  */
 export class NFA {
-  constructor() {
-    /** @type {Array<Map<any, Set<number>>>} Transitions per state */
+  /**
+   * @param {Array} symbols - Array of symbols for this NFA
+   */
+  constructor(symbols) {
+    /** @type {Array} The symbol alphabet */
+    this.symbols = symbols;
+    /** @type {Map<any, number>} Symbol to index mapping */
+    this._symbolToIndex = new Map(symbols.map((s, i) => [s, i]));
+    /** @type {Array<Array<Array<number>>>} Sparse 3D array: [fromState][symbolIndex] = [toStates] */
     this._transitions = [];
     /** @type {Set<number>} */
     this.startStates = new Set();
@@ -54,7 +62,7 @@ export class NFA {
   /** Add a new state, returns its ID */
   addState(accepting = false) {
     const id = this._transitions.length;
-    this._transitions.push(new Map());
+    this._transitions.push([]);
     if (accepting) this.acceptStates.add(id);
     return id;
   }
@@ -69,22 +77,25 @@ export class NFA {
     this.acceptStates.add(stateId);
   }
 
-  /** Add a transition from one state to another on a symbol */
-  addTransition(fromState, toState, symbol) {
-    const transitions = this._transitions[fromState];
-    if (!transitions) return;
+  /** Add a transition from one state to another on a symbol index */
+  addTransition(fromState, toState, symbolIndex) {
+    const stateTransitions = this._transitions[fromState];
+    if (!stateTransitions) return;
 
-    if (!transitions.has(symbol)) {
-      transitions.set(symbol, new Set());
+    if (!stateTransitions[symbolIndex]) {
+      stateTransitions[symbolIndex] = [];
     }
-    transitions.get(symbol).add(toState);
+    // Avoid duplicates
+    if (!stateTransitions[symbolIndex].includes(toState)) {
+      stateTransitions[symbolIndex].push(toState);
+    }
   }
 
-  /** Get all states reachable from a state on a given symbol */
-  getTransitions(stateId, symbol) {
-    const transitions = this._transitions[stateId];
-    if (!transitions) return new Set();
-    return transitions.get(symbol) || new Set();
+  /** Get all states reachable from a state on a given symbol index */
+  getTransitions(stateId, symbolIndex) {
+    const stateTransitions = this._transitions[stateId];
+    if (!stateTransitions) return [];
+    return stateTransitions[symbolIndex] || [];
   }
 
   isAccepting(stateId) {
@@ -100,7 +111,7 @@ export class NFA {
   }
 
   /**
-   * Run the NFA on an input sequence.
+   * Run the NFA on an input sequence (of raw symbols).
    * Returns whether accepted and an execution trace.
    */
   run(inputSequence) {
@@ -109,11 +120,15 @@ export class NFA {
 
     for (let i = 0; i < inputSequence.length; i++) {
       const symbol = inputSequence[i];
+      const symbolIndex = this._symbolToIndex.get(symbol);
       const nextStates = new Set();
 
-      for (const stateId of currentStates) {
-        for (const target of this.getTransitions(stateId, symbol)) {
-          nextStates.add(target);
+      // If symbol not in alphabet, no transitions possible
+      if (symbolIndex !== undefined) {
+        for (const stateId of currentStates) {
+          for (const target of this.getTransitions(stateId, symbolIndex)) {
+            nextStates.add(target);
+          }
         }
       }
 
@@ -127,11 +142,15 @@ export class NFA {
     return { accepted, trace };
   }
 
-  /** Get all transitions for visualization */
+  /** Get all transitions for visualization (converts indices back to symbols) */
   getAllTransitions() {
     const result = [];
     for (let fromId = 0; fromId < this._transitions.length; fromId++) {
-      for (const [symbol, targets] of this._transitions[fromId]) {
+      const stateTransitions = this._transitions[fromId];
+      for (let symbolIndex = 0; symbolIndex < stateTransitions.length; symbolIndex++) {
+        const targets = stateTransitions[symbolIndex];
+        if (!targets) continue;
+        const symbol = this.symbols[symbolIndex];
         for (const toId of targets) {
           result.push({ from: fromId, to: toId, symbol });
         }
@@ -152,37 +171,80 @@ export class NFA {
   }
 
   /**
+   * Create a reversed NFA where all transitions are flipped.
+   * Start states become accept states and vice versa.
+   * @returns {NFA} A new NFA with reversed transitions
+   */
+  reverse() {
+    const reversed = new NFA(this.symbols);
+
+    // Create same number of states
+    for (let i = 0; i < this._transitions.length; i++) {
+      reversed.addState();
+    }
+
+    // Swap start and accept states
+    for (const id of this.startStates) {
+      reversed.setAccept(id);
+    }
+    for (const id of this.acceptStates) {
+      reversed.setStart(id);
+    }
+
+    // Reverse all transitions
+    for (let fromId = 0; fromId < this._transitions.length; fromId++) {
+      const stateTransitions = this._transitions[fromId];
+      for (let symbolIndex = 0; symbolIndex < stateTransitions.length; symbolIndex++) {
+        const targets = stateTransitions[symbolIndex];
+        if (!targets) continue;
+        for (const toId of targets) {
+          reversed.addTransition(toId, fromId, symbolIndex);
+        }
+      }
+    }
+
+    return reversed;
+  }
+
+  /**
+   * Find all states reachable from the start states.
+   * @returns {Set<number>} All reachable states (including start states)
+   */
+  getReachableStates() {
+    const reachable = new Set(this.startStates);
+    const queue = [...this.startStates];
+    let queueHead = 0;
+
+    while (queueHead < queue.length) {
+      const stateId = queue[queueHead++];
+      const stateTransitions = this._transitions[stateId];
+      if (!stateTransitions) continue;
+
+      for (const targets of stateTransitions) {
+        if (!targets) continue;
+        for (const toId of targets) {
+          if (!reachable.has(toId)) {
+            reachable.add(toId);
+            queue.push(toId);
+          }
+        }
+      }
+    }
+
+    return reachable;
+  }
+
+  /**
    * Find all "dead" states - states from which no accept state is reachable.
-   * Uses backward reachability: find all states that can reach an accept state.
+   * Uses backward reachability from accept states via the reversed NFA.
    */
   getDeadStates() {
     const numStates = this._transitions.length;
     if (numStates === 0) return new Set();
 
-    // Build reverse transition graph
-    const reverseTransitions = Array.from({ length: numStates }, () => new Set());
-    for (let fromId = 0; fromId < numStates; fromId++) {
-      for (const targets of this._transitions[fromId].values()) {
-        for (const toId of targets) {
-          reverseTransitions[toId].add(fromId);
-        }
-      }
-    }
-
-    // BFS backward from accept states to find all states that can reach accept
-    const canReachAccept = new Set(this.acceptStates);
-    const queue = [...this.acceptStates];
-    let queueHead = 0;
-
-    while (queueHead < queue.length) {
-      const stateId = queue[queueHead++];
-      for (const fromId of reverseTransitions[stateId]) {
-        if (!canReachAccept.has(fromId)) {
-          canReachAccept.add(fromId);
-          queue.push(fromId);
-        }
-      }
-    }
+    // In the reversed NFA, states reachable from start (= original accept)
+    // are exactly those that can reach accept in the original
+    const canReachAccept = this.reverse().getReachableStates();
 
     // Dead states are those that cannot reach any accept state
     const deadStates = new Set();
@@ -233,7 +295,7 @@ export class NFABuilder {
    * @throws {Error} If state limit is exceeded or state is invalid
    */
   build() {
-    const nfa = new NFA();
+    const nfa = new NFA(this.symbols);
 
     // Maps for state serialization (user values <-> NFA IDs)
     const stateStrToId = new Map();
@@ -290,13 +352,14 @@ export class NFABuilder {
 
       const stateStr = idToStateStr.get(currentId);
 
-      // Try all configured symbols
-      for (const symbol of this.symbols) {
+      // Try all configured symbols (using index for efficient storage)
+      for (let symbolIndex = 0; symbolIndex < this.symbols.length; symbolIndex++) {
+        const symbol = this.symbols[symbolIndex];
         const nextStateStrs = wrappedTransition(stateStr, symbol);
 
         for (const nextStateStr of nextStateStrs) {
           const nextId = addState(nextStateStr);
-          nfa.addTransition(currentId, nextId, symbol);
+          nfa.addTransition(currentId, nextId, symbolIndex);
 
           if (!visited.has(nextId)) {
             queue.push(nextId);
