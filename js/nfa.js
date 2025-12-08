@@ -111,20 +111,24 @@ export class NFA {
   }
 
   /**
-   * Run the NFA on an input sequence (of raw symbols).
+   * Run the NFA on an input sequence.
+   * Each input element is an array of symbols to process simultaneously.
    * Returns whether accepted and an execution trace.
+   * @param {Array<string[]>} inputSequence - Array of symbol arrays
    */
   run(inputSequence) {
     let currentStates = new Set(this.startStates);
     const trace = [{ step: 0, input: null, states: [...currentStates] }];
 
     for (let i = 0; i < inputSequence.length; i++) {
-      const symbol = inputSequence[i];
-      const symbolIndex = this._symbolToIndex.get(symbol);
+      const symbols = inputSequence[i];
       const nextStates = new Set();
 
-      // If symbol not in alphabet, no transitions possible
-      if (symbolIndex !== undefined) {
+      // Follow transitions for all symbols in this step
+      for (const symbol of symbols) {
+        const symbolIndex = this._symbolToIndex.get(symbol);
+        if (symbolIndex === undefined) continue;
+
         for (const stateId of currentStates) {
           for (const target of this.getTransitions(stateId, symbolIndex)) {
             nextStates.add(target);
@@ -133,7 +137,7 @@ export class NFA {
       }
 
       currentStates = nextStates;
-      trace.push({ step: i + 1, input: symbol, states: [...currentStates] });
+      trace.push({ step: i + 1, input: symbols, states: [...currentStates] });
 
       if (currentStates.size === 0) break;
     }
@@ -395,14 +399,17 @@ export class NFABuilder {
   }
 
   /**
-   * Wrap the transition function to handle errors and normalize output
+   * Wrap the transition function to handle errors and normalize output.
+   * Converts digit strings to Numbers for user-facing API compatibility.
    * @private
    */
   _wrapTransitionFn(fn) {
     return (stateStr, symbol) => {
       const stateValue = this._deserializeState(stateStr);
+      // Convert digit strings to numbers for user function
+      const userSymbol = symbol >= '0' && symbol <= '9' ? Number(symbol) : symbol;
       try {
-        const result = fn(stateValue, symbol);
+        const result = fn(stateValue, userSymbol);
         const nextStates = this._normalizeToArray(result);
         return nextStates
           .filter(s => s !== undefined)
@@ -466,7 +473,7 @@ export class NFABuilder {
  * Uses JavaScript's regex engine to extract matching characters from ALL_SYMBOLS.
  *
  * @param {string} charClass - Character class content (without brackets), e.g. "1-9", "a-zA-Z0-9_"
- * @returns {Array<string|number>} Array of matching symbols (digits are returned as numbers)
+ * @returns {string[]} Array of matching symbol strings
  * @throws {Error} If the character class pattern is invalid
  */
 export function expandSymbolClass(charClass) {
@@ -482,8 +489,7 @@ export function expandSymbolClass(charClass) {
       throw new Error(`No symbols match the pattern [${charClass}]`);
     }
 
-    // Convert digit characters to numbers for backward compatibility
-    return matches.map(s => s >= '0' && s <= '9' ? Number(s) : s);
+    return matches;
   } catch (e) {
     if (e.message.includes('No symbols match')) throw e;
     throw new Error(`Invalid character class pattern: ${e.message}`);

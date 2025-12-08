@@ -497,15 +497,45 @@ function updateTestResult() {
 }
 
 /**
- * Parse user input string into a sequence of symbols.
- * Each character is treated as a separate symbol.
- * Digits are converted to numbers for compatibility.
+ * Parse user input string into a sequence of symbol arrays.
+ * Each character becomes a single-element array.
+ * [charClass] syntax expands to array of matching symbols.
+ * @returns {Array<string[]>} Array of symbol arrays
  */
 function parseInputSequence(inputStr) {
-  return [...inputStr].map(char => {
-    const num = Number(char);
-    return !isNaN(num) ? num : char;
-  });
+  const result = [];
+  let i = 0;
+
+  while (i < inputStr.length) {
+    if (inputStr[i] === '[') {
+      // Find matching ]
+      const end = inputStr.indexOf(']', i + 1);
+      if (end === -1) {
+        throw new Error('Unclosed character class [');
+      }
+      const charClass = inputStr.slice(i + 1, end);
+      if (charClass.length === 0) {
+        throw new Error('Empty character class []');
+      }
+      result.push(expandSymbolClass(charClass));
+      i = end + 1;
+    } else {
+      result.push([inputStr[i]]);
+      i++;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Format a parsed input sequence for display
+ */
+function formatInputSequence(sequence) {
+  if (sequence.length === 0) return '(empty)';
+  return sequence.map(symbols =>
+    symbols.length === 1 ? symbols[0] : `[${compactSymbolLabel(symbols)}]`
+  ).join('');
 }
 
 /**
@@ -513,7 +543,7 @@ function parseInputSequence(inputStr) {
  */
 function displayTestResult(result, sequence) {
   const lastStep = result.trace[result.trace.length - 1];
-  const inputDisplay = sequence.length > 0 ? sequence.join('') : '(empty)';
+  const inputDisplay = formatInputSequence(sequence);
 
   if (result.accepted) {
     showTestResult(
