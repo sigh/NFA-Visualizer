@@ -159,6 +159,26 @@ export class NFA {
     return result;
   }
 
+  /** Get transitions from a specific state, grouped by target */
+  getTransitionsFrom(stateId) {
+    const stateTransitions = this._transitions[stateId];
+    if (!stateTransitions) return [];
+
+    // Group by target state
+    const byTarget = new Map();
+    for (let symbolIndex = 0; symbolIndex < stateTransitions.length; symbolIndex++) {
+      const targets = stateTransitions[symbolIndex];
+      if (!targets) continue;
+      const symbol = this.symbols[symbolIndex];
+      for (const toId of targets) {
+        if (!byTarget.has(toId)) byTarget.set(toId, []);
+        byTarget.get(toId).push(symbol);
+      }
+    }
+
+    return [...byTarget.entries()].map(([to, symbols]) => ({ to, symbols }));
+  }
+
   /** Get state information for visualization */
   getStateInfo() {
     const deadStates = this.getDeadStates();

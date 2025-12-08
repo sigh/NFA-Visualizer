@@ -24,24 +24,3 @@ export function canonicalJSON(value) {
   };
   return JSON.stringify(value, replacer);
 }
-
-/**
- * HTML entity map for escaping special characters
- */
-const HTML_ENTITIES = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;'
-};
-
-/**
- * Escape HTML special characters to prevent XSS
- *
- * @param {string} str - String to escape
- * @returns {string} Escaped string
- */
-export function escapeHtml(str) {
-  return str.replace(/[&<>"']/g, c => HTML_ENTITIES[c]);
-}

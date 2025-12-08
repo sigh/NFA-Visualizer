@@ -3,10 +3,9 @@
  *
  * Renders NFAs as interactive state diagrams using Cytoscape.js with:
  * - Dagre layout for directed graphs
- * - Visual distinction for start/accept states
- * - Curved edges for parallel transitions
- * - Self-loop rendering
- * - Trace highlighting
+ * - Visual distinction for start/accept/dead states
+ * - State selection with outgoing edge highlighting
+ * - Trace highlighting for test execution
  *
  * @module visualizer
  */
@@ -34,7 +33,8 @@ const COLORS = {
   transitionText: '#d0d0d8',
   transitionMuted: '#3a3a42',
   highlight: '#fbbf24',
-  highlightDim: '#b08a1a'
+  highlightDim: '#b08a1a',
+  primary: '#6c9eff'
 };
 
 /** Font stack for canvas text */
@@ -47,8 +47,10 @@ const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, sans-serif';
  * 1. Base node/edge styles
  * 2. State type styles (start, accept, dead)
  * 3. Combination styles (start+accept)
- * 4. Trace highlight styles (highlighted, highlighted-final)
- * 5. Highlight + state type combinations
+ * 4. Selection styles
+ * 5. Selection + state type combinations
+ * 6. Trace highlight styles (highlighted, highlighted-final)
+ * 7. Highlight + state type combinations
  */
 const CYTOSCAPE_STYLE = [
   // ========== BASE STYLES ==========
@@ -141,6 +143,55 @@ const CYTOSCAPE_STYLE = [
       'target-arrow-color': COLORS.transitionMuted,
       'line-style': 'dashed',
       'color': COLORS.deadText
+    }
+  },
+
+  // ========== SELECTION STYLES ==========
+  // Selected state
+  {
+    selector: 'node.selected',
+    style: {
+      'border-color': COLORS.primary,
+      'border-width': 4
+    }
+  },
+  // Outgoing edge from selected state
+  {
+    selector: 'edge.selected-outgoing',
+    style: {
+      'line-color': COLORS.primary,
+      'target-arrow-color': COLORS.primary,
+      'width': 3
+    }
+  },
+
+  // ========== SELECTION + STATE TYPE COMBINATIONS ==========
+  // Dead state selected: keep dashed border style
+  {
+    selector: 'node.dead.selected',
+    style: {
+      'border-color': COLORS.primary,
+      'border-width': 4,
+      'border-style': 'dashed'
+    }
+  },
+  // Accept state selected: keep double border style
+  {
+    selector: 'node.accept.selected',
+    style: {
+      'border-color': COLORS.primary,
+      'border-width': 5,
+      'border-style': 'double'
+    }
+  },
+  // Dead edge selected: keep dashed line style
+  {
+    selector: 'edge.dead.selected-outgoing',
+    style: {
+      'line-color': COLORS.primary,
+      'target-arrow-color': COLORS.primary,
+      'width': 3,
+      'line-style': 'dashed'
     }
   },
 
@@ -256,24 +307,16 @@ const CYTOSCAPE_STYLE = [
  * Compress a list of symbols into a compact regex-like character class string.
  * Consecutive characters are collapsed into ranges (e.g., 1,2,3,5,7,8,9 → 1-357-9)
  *
- * @param {Array<string|number>} symbols - Array of symbols
+ * @param {Array<string|number>} symbols - Array of symbols (assumed to be pre-sorted by symbol index)
  * @returns {string} Compact label
  */
-function compactSymbolLabel(symbols) {
+export function compactSymbolLabel(symbols) {
   if (symbols.length === 0) return '';
   if (symbols.length === 1) return String(symbols[0]);
 
-  // Convert to strings and sort
-  const strs = symbols.map(String).sort((a, b) => {
-    // Sort numbers numerically, then letters
-    const aNum = Number(a), bNum = Number(b);
-    const aIsNum = !isNaN(aNum) && a.length === 1;
-    const bIsNum = !isNaN(bNum) && b.length === 1;
-    if (aIsNum && bIsNum) return aNum - bNum;
-    if (aIsNum) return -1;
-    if (bIsNum) return 1;
-    return a < b ? -1 : a > b ? 1 : 0;
-  });
+  // Symbols are already in index order from NFA iteration.
+  // Convert to strings for range detection.
+  const strs = symbols.map(String);
 
   // Build ranges for single characters
   const result = [];
@@ -422,6 +465,57 @@ export class NFAVisualizer {
     this.cy.on('mouseout', 'node', () => {
       this.tooltip.style.display = 'none';
     });
+
+    // Handle click on node for selection
+    this.cy.on('tap', 'node:not(.start-marker)', (event) => {
+      const node = event.target;
+      const stateId = parseInt(node.id().slice(1), 10);
+      this.selectState(stateId);
+      // Notify external handler if set
+      if (this.onStateSelect) {
+        this.onStateSelect(stateId);
+      }
+    });
+
+    // Handle click on background to deselect
+    this.cy.on('tap', (event) => {
+      if (event.target === this.cy) {
+        this.clearSelection();
+        if (this.onStateSelect) {
+          this.onStateSelect(null);
+        }
+      }
+    });
+  }
+
+  /**
+   * Select a state and highlight its outgoing transitions
+   * @param {number} stateId
+   */
+  selectState(stateId) {
+    if (!this.cy) return;
+
+    // Clear previous selection
+    this.cy.elements().removeClass('selected selected-outgoing');
+
+    // Select the node
+    this.cy.$(`#s${stateId}`).addClass('selected');
+
+    // Highlight outgoing edges
+    this.cy.edges().forEach(edge => {
+      if (edge.source().id() === `s${stateId}` && !edge.hasClass('start-arrow')) {
+        edge.addClass('selected-outgoing');
+      }
+    });
+  }
+
+  /**
+   * Clear state selection
+   */
+  clearSelection() {
+    if (this.cy) {
+      this.cy.elements().removeClass('selected selected-outgoing');
+    }
   }
 
   /**
@@ -557,7 +651,7 @@ export class NFAVisualizer {
   highlightTrace(trace) {
     if (!this.cy) return;
 
-    // Clear previous highlights
+    // Clear previous highlights (selection is independent)
     this.cy.elements().removeClass('highlighted highlighted-final');
 
     // Track visited states at each step and transitions taken

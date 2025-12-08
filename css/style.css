@@ -294,13 +294,25 @@ header {
 }
 
 .state-item {
-  padding: var(--space-xs) 0;
+  padding: var(--space-xs) var(--space-sm);
   color: var(--color-text-secondary);
-  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
 
-  &:last-child {
-    border-bottom: none;
+  &:hover {
+    background: var(--color-surface-raised);
   }
+
+  &.expanded {
+    background: var(--color-surface-raised);
+  }
+}
+
+.state-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
 }
 
 .state-id {
@@ -310,6 +322,25 @@ header {
 
 .state-label {
   color: var(--color-text);
+}
+
+.state-flags {
+  color: var(--color-text-muted);
+}
+
+.state-transitions {
+  margin-top: var(--space-sm);
+  padding-left: var(--space-md);
+  border-left: 2px solid var(--color-border);
+}
+
+.transition-row {
+  padding: 2px 0;
+  color: var(--color-text-secondary);
+
+  .symbol-label {
+    color: var(--color-syntax-keyword);
+  }
 }
 
 /* --------------------------------------------------------------------------

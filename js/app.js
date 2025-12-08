@@ -7,8 +7,7 @@
  */
 
 import { NFABuilder, parseNFAConfig, buildCodeFromSplit, parseSplitFromCode, expandSymbolClass, DEFAULT_SYMBOL_CLASS } from './nfa.js';
-import { NFAVisualizer } from './visualizer.js';
-import { escapeHtml } from './util.js';
+import { NFAVisualizer, compactSymbolLabel } from './visualizer.js';
 
 // ============================================
 // Configuration
@@ -110,6 +109,11 @@ function init() {
 
   // Initialize visualizer
   visualizer = new NFAVisualizer(elements.cyContainer);
+
+  // Handle state selection from graph
+  visualizer.onStateSelect = (stateId) => {
+    updateStateListSelection(stateId);
+  };
 
   // Hide dead states toggle
   elements.hideDeadToggle.addEventListener('change', () => {
@@ -298,17 +302,151 @@ function updateStateList() {
   const states = currentNFA.getStateInfo();
   const labels = currentNFA.stateLabels;
 
-  const items = states.map(state => {
+  // Clear existing items
+  elements.stateList.replaceChildren();
+
+  for (const state of states) {
     const label = labels?.get(state.id) || `q${state.id}`;
-    const flags = [];
-    if (state.isStart) flags.push('start');
-    if (state.isAccept) flags.push('accept');
-    if (state.isDead) flags.push('dead');
-    const flagStr = flags.length > 0 ? ` (${flags.join(', ')})` : '';
-    return `<div class="state-item"><span class="state-id">q${state.id}</span> = <span class="state-label">${escapeHtml(label)}</span>${flagStr}</div>`;
+    const item = createStateItem(state, label);
+    elements.stateList.appendChild(item);
+  }
+}
+
+/**
+ * Create a state item DOM element
+ */
+function createStateItem(state, label) {
+  const item = document.createElement('div');
+  item.className = 'state-item';
+  item.dataset.stateId = state.id;
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'state-header';
+
+  const idSpan = document.createElement('span');
+  idSpan.className = 'state-id';
+  idSpan.textContent = `q${state.id}`;
+
+  const labelSpan = document.createElement('span');
+  labelSpan.className = 'state-label';
+  labelSpan.textContent = label;
+
+  header.append(idSpan, ' = ', labelSpan);
+
+  // Flags
+  const flags = [];
+  if (state.isStart) flags.push('start');
+  if (state.isAccept) flags.push('accept');
+  if (state.isDead) flags.push('dead');
+
+  if (flags.length > 0) {
+    const flagsSpan = document.createElement('span');
+    flagsSpan.className = 'state-flags';
+    flagsSpan.textContent = ` (${flags.join(', ')})`;
+    header.appendChild(flagsSpan);
+  }
+
+  // Transitions container (populated on expand)
+  const transitions = document.createElement('div');
+  transitions.className = 'state-transitions hidden';
+
+  item.append(header, transitions);
+
+  // Click handler
+  item.addEventListener('click', () => {
+    handleStateSelect(state.id, item);
   });
 
-  elements.stateList.innerHTML = items.join('');
+  return item;
+}
+
+/**
+ * Handle state selection from state list click
+ */
+function handleStateSelect(stateId, itemElement) {
+  const wasSelected = itemElement.classList.contains('expanded');
+
+  // Collapse all items and clear graph selection
+  collapseAllStateItems();
+  visualizer.clearSelection();
+
+  if (wasSelected) {
+    // Was already selected, just deselect
+    return;
+  }
+
+  // Expand and select in graph
+  expandStateItem(stateId, itemElement);
+  visualizer.selectState(stateId);
+}
+
+/**
+ * Collapse all state items in the list
+ */
+function collapseAllStateItems() {
+  elements.stateList.querySelectorAll('.state-item').forEach(item => {
+    item.classList.remove('expanded');
+    item.querySelector('.state-transitions')?.classList.add('hidden');
+  });
+}
+
+/**
+ * Expand a state item to show its transitions (UI only, no graph update)
+ */
+function expandStateItem(stateId, itemElement) {
+  itemElement.classList.add('expanded');
+  const transitionsEl = itemElement.querySelector('.state-transitions');
+
+  // Clear and rebuild transitions content
+  transitionsEl.replaceChildren();
+
+  const transitions = currentNFA.getTransitionsFrom(stateId);
+  if (transitions.length === 0) {
+    const row = document.createElement('div');
+    row.className = 'transition-row';
+    row.textContent = 'No outgoing transitions';
+    transitionsEl.appendChild(row);
+  } else {
+    for (const { to, symbols } of transitions) {
+      transitionsEl.appendChild(createTransitionRow(to, symbols));
+    }
+  }
+  transitionsEl.classList.remove('hidden');
+}
+
+/**
+ * Create a transition row DOM element
+ */
+function createTransitionRow(toState, symbols) {
+  const row = document.createElement('div');
+  row.className = 'transition-row';
+
+  const stateSpan = document.createElement('span');
+  stateSpan.className = 'state-id';
+  stateSpan.textContent = `q${toState}`;
+
+  const symbolSpan = document.createElement('span');
+  symbolSpan.className = 'symbol-label';
+  symbolSpan.textContent = compactSymbolLabel(symbols);
+
+  row.append('→ ', stateSpan, ' on ', symbolSpan);
+  return row;
+}
+
+/**
+ * Update state list to match graph selection (called from graph click)
+ */
+function updateStateListSelection(stateId) {
+  collapseAllStateItems();
+
+  if (stateId === null) return;
+
+  // Find and expand the matching item (graph already has selection)
+  const item = elements.stateList.querySelector(`.state-item[data-state-id="${stateId}"]`);
+  if (item) {
+    expandStateItem(stateId, item);
+  }
 }
 
 /**
