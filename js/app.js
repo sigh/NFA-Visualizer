@@ -59,6 +59,10 @@ const elements = {
   cyContainer: document.getElementById('cy-container'),
   emptyState: document.getElementById('empty-state'),
 
+  // Panel controls
+  appLayout: document.querySelector('.app-layout'),
+  configToggleBtn: document.getElementById('config-toggle-btn'),
+
   // Stats
   statStates: document.getElementById('stat-states'),
   statStart: document.getElementById('stat-start'),
@@ -159,6 +163,12 @@ function init() {
   // Hide dead states toggle
   elements.hideDeadToggle.addEventListener('change', () => {
     visualizer.setHideDeadStates(elements.hideDeadToggle.checked);
+  });
+
+  // Config panel collapse/expand
+  elements.configToggleBtn.addEventListener('click', () => {
+    elements.appLayout.classList.toggle('config-collapsed');
+    visualizer?.fit();
   });
 
   // Refit visualization on window resize

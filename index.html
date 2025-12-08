@@ -25,7 +25,7 @@
 
   <main class="app-layout">
     <!-- Left Panel: Configuration -->
-    <section class="panel panel-config">
+    <section class="panel panel-config" id="panel-config">
       <div class="panel-header">
         <h2>Configuration</h2>
         <label class="toggle-label">
@@ -100,7 +100,7 @@
         </div>
       </div>
 
-      <div id=" error-display" class="error-display hidden"></div>
+      <div id="error-display" class="error-display hidden"></div>
 
       <div class="button-row">
         <button id="build-btn" class="primary-btn">Build NFA</button>
@@ -109,6 +109,7 @@
 
     <!-- Middle Panel: Visualization -->
     <section class="panel panel-viz">
+      <button id="config-toggle-btn" class="panel-toggle-btn" title="Toggle configuration panel"></button>
       <div class="panel-header">
         <h2>Visualization</h2>
       </div>

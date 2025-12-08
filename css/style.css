@@ -110,6 +110,11 @@ header {
   grid-template-columns: 380px 1fr 280px;
   height: calc(100vh - 53px);
   overflow: hidden;
+  transition: grid-template-columns var(--transition-fast);
+
+  &.config-collapsed {
+    grid-template-columns: 0 1fr 280px;
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -141,6 +146,46 @@ header {
     color: var(--color-text);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+  }
+}
+
+/* Panel toggle button */
+.panel-toggle-btn {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: var(--space-sm) var(--space-xs);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  z-index: 10;
+
+  &::before {
+    content: '\25C0';
+  }
+
+  &:hover {
+    background: var(--color-surface-raised);
+    color: var(--color-text);
+  }
+}
+
+.config-collapsed .panel-toggle-btn::before {
+  content: '\25B6';
+}
+
+.config-collapsed .panel-config {
+  overflow: hidden;
+  border-right: none;
+
+  .panel-header,
+  .input-section,
+  .button-row {
+    display: none;
   }
 }
 
@@ -600,6 +645,10 @@ button {
 @media (max-width: 1200px) {
   .app-layout {
     grid-template-columns: 320px 1fr 240px;
+
+    &.config-collapsed {
+      grid-template-columns: 0 1fr 240px;
+    }
   }
 }
 
@@ -609,6 +658,10 @@ button {
     grid-template-rows: auto 1fr auto;
     height: auto;
     min-height: 100vh;
+
+    &.config-collapsed {
+      grid-template-columns: 1fr;
+    }
   }
 
   .panel {
@@ -617,6 +670,23 @@ button {
 
     &:last-child {
       border-bottom: none;
+    }
+  }
+
+  .panel-toggle-btn {
+    display: none;
+  }
+
+  .config-collapsed .panel-config {
+
+    .panel-header,
+    .input-section,
+    .button-row {
+      display: flex;
+    }
+
+    .input-section {
+      display: block;
     }
   }
 
