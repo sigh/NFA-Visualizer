@@ -36,64 +36,75 @@
 
       <div class="input-section">
         <div class="code-block code-block-inline">
-          <div class="code-comment">// Symbols to explore (regex character class syntax)</div>
+          <code class="code-line code-decoration language-javascript">// Symbols to explore.</code>
+          <code class="code-line code-decoration language-javascript">// (regex character class syntax)</code>
           <div class="code-line">
-            <span class="code-syntax">symbols = /[</span>
-            <input type="text" id="symbols-input" value="1-9" spellcheck="false" placeholder="1-9">
-            <span class="code-syntax">]/;</span>
+            <code class="code-decoration language-javascript">symbols =</code>
+            <span class="token regex">
+              &nbsp;/[<span id="symbols-input" class="code-editor-inline token regex">1-9</span>]/
+            </span>
+            <code class="code-decoration language-javascript">;</code>
           </div>
         </div>
 
         <div id="split-input">
           <div class="code-block">
-            <div class="code-comment">// Initial state(s). Use an array for multiple start states.</div>
+            <code
+              class="code-line code-decoration language-javascript">// Initial state(s). Any serializable value</code>
+            <code class="code-line code-decoration language-javascript">// except arrays.</code>
+            <code
+              class="code-line code-decoration language-javascript">// Use an array for multiple start states.</code>
             <div class="code-line">
-              <span class="code-syntax">startState =&nbsp;</span>
+              <code class="code-decoration language-javascript">startState =</code>
+              <span>&nbsp;</span>
               <span id="start-state" class="code-editor-inline">0</span>
-              <span class="code-syntax">;</span>
+              <code class="code-decoration language-javascript">;</code>
             </div>
           </div>
 
           <div class="code-block">
-            <div class="code-comment">// Returns next state(s) given current state and input symbol.</div>
+            <code class="code-decoration language-javascript">// Returns next state(s) given current state</code>
+            <code class="code-decoration language-javascript">// and input symbol.</code>
             <div class="code-line">
-              <span class="code-syntax">function transition(state, symbol) {</span>
+              <code class="code-decoration language-javascript">function transition(state, symbol) {</code>
             </div>
             <div class="editor-resize-wrapper">
-              <div id="transition-fn" class="code-editor">// Count: accepts sequences summing to 3
-                if (state + symbol <= 3) { return state + symbol; } return undefined;</div>
-              </div>
-              <div class="code-line">
-                <span class="code-syntax">}</span>
-              </div>
+              <div id="transition-fn" class="code-editor indented-code">// Count: accepts sequences summing to 3
+                if (state + symbol &lt;= 3) { return state + symbol; }
+                return undefined;</div>
             </div>
-
-            <div class="code-block">
-              <div class="code-comment">// Returns true if state is a valid final/accepting state.</div>
-              <div class="code-line">
-                <span class="code-syntax">function accept(state) {</span>
-              </div>
-              <div class="editor-resize-wrapper">
-                <div id="accept-fn" class="code-editor">return state === 3;</div>
-              </div>
-              <div class="code-line">
-                <span class="code-syntax">}</span>
-              </div>
+            <div class="code-line">
+              <code class="code-decoration language-javascript">}</code>
             </div>
           </div>
 
-          <div id="unified-input" class="hidden">
-            <div class="editor-resize-wrapper editor-resize-wrapper-large">
-              <div id="unified-code" class="code-editor"></div>
+          <div class="code-block">
+            <code class="code-line code-decoration language-javascript">// Returns true if state is a valid</code>
+            <code class="code-line code-decoration language-javascript">// final/accepting state.</code>
+            <div class="code-line">
+              <code class="code-decoration language-javascript">function accept(state) {</code>
+            </div>
+            <div class="editor-resize-wrapper">
+              <div id="accept-fn" class="code-editor indented-code">return state === 3;</div>
+            </div>
+            <div class="code-line">
+              <code class="code-decoration language-javascript">}</code>
             </div>
           </div>
         </div>
 
-        <div id="error-display" class="error-display hidden"></div>
-
-        <div class="button-row">
-          <button id="build-btn" class="primary-btn">Build NFA</button>
+        <div id="unified-input" class="hidden">
+          <div class="editor-resize-wrapper editor-resize-wrapper-large">
+            <div id="unified-code" class="code-editor"></div>
+          </div>
         </div>
+      </div>
+
+      <div id=" error-display" class="error-display hidden"></div>
+
+      <div class="button-row">
+        <button id="build-btn" class="primary-btn">Build NFA</button>
+      </div>
     </section>
 
     <!-- Middle Panel: Visualization -->

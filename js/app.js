@@ -101,19 +101,24 @@ function highlight(editor) {
  * Initialize CodeJar editors
  */
 function initEditors() {
-  // Inline editor for startState (no highlighting for simple expressions)
-  editors.startState = CodeJar(elements.startStateInput, () => { }, { tab: '  ' });
-
-  // Block editors with syntax highlighting
+  // All editors use syntax highlighting (except symbols which uses plain text)
+  editors.symbols = CodeJar(elements.symbolsInput, () => { }, { tab: '  ' });
+  editors.startState = CodeJar(elements.startStateInput, highlight, { tab: '  ' });
   editors.transition = CodeJar(elements.transitionInput, highlight, { tab: '  ' });
   editors.accept = CodeJar(elements.acceptInput, highlight, { tab: '  ' });
   editors.unified = CodeJar(elements.unifiedCodeInput, highlight, { tab: '  ' });
 
   // Save on changes
+  editors.symbols.onUpdate(saveToStorage);
   editors.startState.onUpdate(saveToStorage);
   editors.transition.onUpdate(saveToStorage);
   editors.accept.onUpdate(saveToStorage);
   editors.unified.onUpdate(saveToStorage);
+
+  // Highlight static code decoration elements
+  document.querySelectorAll('.code-decoration').forEach(el => {
+    Prism.highlightElement(el);
+  });
 }
 
 // ============================================
@@ -142,9 +147,6 @@ function init() {
 
   // Show/hide trace toggle
   elements.showTraceToggle.addEventListener('change', updateTestResult);
-
-  // Save inputs on change
-  elements.symbolsInput.addEventListener('input', saveToStorage);
 
   // Initialize visualizer
   visualizer = new NFAVisualizer(elements.cyContainer);
@@ -176,7 +178,7 @@ function init() {
  * Save current input values to sessionStorage
  */
 function saveToStorage() {
-  sessionStorage.setItem(STORAGE_KEYS.symbols, elements.symbolsInput.value);
+  sessionStorage.setItem(STORAGE_KEYS.symbols, editors.symbols.toString());
   sessionStorage.setItem(STORAGE_KEYS.startState, editors.startState.toString());
   sessionStorage.setItem(STORAGE_KEYS.transition, editors.transition.toString());
   sessionStorage.setItem(STORAGE_KEYS.accept, editors.accept.toString());
@@ -197,7 +199,7 @@ function restoreFromStorage() {
   const unifiedMode = sessionStorage.getItem(STORAGE_KEYS.unifiedMode);
   const testInput = sessionStorage.getItem(STORAGE_KEYS.testInput);
 
-  if (symbols !== null) elements.symbolsInput.value = symbols;
+  if (symbols !== null) editors.symbols.updateCode(symbols);
   if (startState !== null) editors.startState.updateCode(startState);
   if (transition !== null) editors.transition.updateCode(transition);
   if (accept !== null) editors.accept.updateCode(accept);
@@ -267,7 +269,7 @@ function handleBuild() {
     const config = parseNFAConfig(code);
 
     // Expand symbol class to array of symbols
-    const symbolClass = elements.symbolsInput.value.trim() || DEFAULT_SYMBOL_CLASS;
+    const symbolClass = editors.symbols.toString().trim() || DEFAULT_SYMBOL_CLASS;
     const symbols = expandSymbolClass(symbolClass);
 
     // Build NFA

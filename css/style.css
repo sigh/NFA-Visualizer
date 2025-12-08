@@ -9,24 +9,17 @@
   /* Background colors */
   --color-bg: #0f0f12;
   --color-surface: #18181c;
-  --color-surface-raised: #222228;
+  --color-surface-raised: #36363f;
   --color-border: #3a3a45;
 
   /* Code/Editor colors */
   --color-code-bg: #0a0a0c;
-  --color-code-border: #2a2a35;
+  --color-code-border: #474759;
 
   /* Text colors - High Contrast */
   --color-text: #f5f5f7;
   --color-text-secondary: #b8b8c0;
   --color-text-muted: #7a7a85;
-
-  /* Syntax highlighting */
-  --color-syntax-keyword: #c792ea;
-  --color-syntax-comment: #6a7080;
-  --color-syntax-string: #7ec699;
-  --color-syntax-number: #f08d49;
-  --color-syntax-function: #6196cc;
 
   /* Accent colors */
   --color-primary: #6c9eff;
@@ -45,6 +38,7 @@
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', Consolas, monospace;
   --font-size-xs: 11px;
+  --font-size-code: 12px;
   --font-size-sm: 13px;
   --font-size-md: 14px;
   --font-size-lg: 16px;
@@ -159,7 +153,8 @@ header {
   .input-section {
     flex: 1;
     overflow-y: auto;
-    padding: var(--space-md) var(--space-lg);
+    padding: var(--space-md) var(--space-lg) var(--space-md) var(--space-sm);
+    font-size: var(--font-size-code);
   }
 
   .button-row {
@@ -342,7 +337,7 @@ header {
   color: var(--color-text-secondary);
 
   .symbol-label {
-    color: var(--color-syntax-keyword);
+    color: var(--color-text);
   }
 }
 
@@ -351,13 +346,9 @@ header {
    -------------------------------------------------------------------------- */
 .code-block {
   font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-code);
   margin-bottom: var(--space-xs);
-}
-
-.code-comment {
-  color: var(--color-syntax-comment);
-  font-size: var(--font-size-xs);
+  padding-left: var(--space-sm);
 }
 
 .code-line {
@@ -365,26 +356,28 @@ header {
   align-items: center;
 }
 
-.code-block-inline .code-line {
-  align-items: center;
+/* Inline code decoration (highlighted by Prism) */
+.code-decoration {
+  font: inherit;
+  background: transparent;
+  padding: 0;
+  white-space: pre;
+  display: block;
 
-  input[type="text"] {
-    flex: 1;
-    padding: var(--space-xs) var(--space-sm);
-    background: var(--color-surface-raised);
-    border: 1px solid var(--color-code-border);
-    border-radius: var(--radius-sm);
-
-    &:focus {
-      border-color: var(--color-primary);
-      background: var(--color-code-bg);
-    }
+  &:not(:first-child):not(.code-line) {
+    display: inline;
   }
 }
 
-.code-syntax {
-  color: var(--color-syntax-keyword);
-  white-space: nowrap;
+/* Override Prism's inline code background */
+:not(pre)>code[class*="language-"] {
+  background: transparent;
+  padding: 0;
+}
+
+/* Make comments less prominent */
+.token.comment {
+  color: var(--color-text-muted);
 }
 
 /* --------------------------------------------------------------------------
@@ -397,9 +390,6 @@ input[type="text"] {
   background: transparent;
   border: none;
   outline: none;
-  resize: none;
-  width: 100%;
-  line-height: 1.6;
 
   &::placeholder {
     color: var(--color-text-muted);
@@ -409,78 +399,43 @@ input[type="text"] {
 /* --------------------------------------------------------------------------
    CodeJar Editors
    -------------------------------------------------------------------------- */
-.code-editor {
+.code-editor,
+.code-editor-inline {
   font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-code);
   line-height: 1.6;
+  color: var(--color-text);
   background: var(--color-surface-raised);
   border: 1px solid var(--color-code-border);
   border-radius: var(--radius-sm);
-  padding: var(--space-sm);
-  min-height: 1.6em;
-  white-space: pre-wrap;
-  overflow: auto;
-  color: var(--color-text);
+
+  &:hover {
+    background: var(--color-code-bg);
+  }
 
   &:focus {
     outline: none;
     border-color: var(--color-primary);
     background: var(--color-code-bg);
   }
+}
 
-  /* PrismJS token overrides for our theme */
-  .token.comment {
-    color: var(--color-syntax-comment);
-  }
+.code-editor {
+  padding: calc(var(--space-sm) - 1px);
+  min-height: 1.6em;
+  white-space: pre-wrap;
+  overflow: auto;
 
-  .token.keyword {
-    color: var(--color-syntax-keyword);
-  }
-
-  .token.string {
-    color: var(--color-syntax-string);
-  }
-
-  .token.number {
-    color: var(--color-syntax-number);
-  }
-
-  .token.function {
-    color: var(--color-syntax-function);
-  }
-
-  .token.operator {
-    color: var(--color-text-secondary);
-  }
-
-  .token.punctuation {
-    color: var(--color-text-secondary);
+  &.indented-code {
+    margin-left: calc(var(--space-sm) - 2px);
   }
 }
 
 .code-editor-inline {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-  line-height: 1.6;
-  color: var(--color-text);
-  background: transparent;
-  border: none;
-  border-bottom: 1px dashed var(--color-border);
-  outline: none;
-  min-width: 2em;
-  padding: 0 2px;
   display: inline;
+  min-width: 2em;
+  padding: 0 var(--space-xs);
   cursor: text;
-
-  &:hover {
-    border-bottom-color: var(--color-text-muted);
-  }
-
-  &:focus {
-    outline: none;
-    border-bottom-style: solid;
-    border-bottom-color: var(--color-primary);
-  }
 }
 
 /* Resizable editor wrapper */
