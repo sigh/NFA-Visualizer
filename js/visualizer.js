@@ -2,7 +2,7 @@
  * NFA Visualizer - Cytoscape-based State Diagram Renderer
  *
  * Renders NFAs as interactive state diagrams using Cytoscape.js with:
- * - Automatic layout (breadthfirst for small graphs, cose for larger)
+ * - Dagre layout for directed graphs
  * - Visual distinction for start/accept states
  * - Curved edges for parallel transitions
  * - Self-loop rendering
@@ -366,7 +366,7 @@ export class NFAVisualizer {
       container: this.container,
       elements: elements,
       style: CYTOSCAPE_STYLE,
-      layout: this.getLayoutOptions(elements),
+      layout: this.getLayoutOptions(),
       wheelSensitivity: 0.3,
       minZoom: 0.3,
       maxZoom: 3
@@ -515,37 +515,16 @@ export class NFAVisualizer {
   }
 
   /**
-   * Get layout options based on graph structure
-   * @param {Array} elements
+   * Get layout options for the graph
    * @returns {Object} Layout options
    */
-  getLayoutOptions(elements) {
-    const nodeCount = elements.filter(e => e.data.id?.startsWith('s')).length;
-
-    // Use breadthfirst for small graphs, cose for larger ones
-    if (nodeCount <= 10) {
-      return {
-        name: 'breadthfirst',
-        directed: true,
-        spacingFactor: 1.5,
-        padding: 50,
-        avoidOverlap: true
-      };
-    }
-
+  getLayoutOptions() {
     return {
-      name: 'cose',
-      idealEdgeLength: 100,
-      nodeOverlap: 20,
-      padding: 50,
-      randomize: false,
-      componentSpacing: 100,
-      nodeRepulsion: 400000,
-      edgeElasticity: 100,
-      nestingFactor: 5,
-      gravity: 80,
-      numIter: 1000,
-      animate: false
+      name: 'dagre',
+      rankDir: 'LR',
+      nodeSep: 50,
+      rankSep: 80,
+      padding: 30
     };
   }
 
