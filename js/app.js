@@ -6,6 +6,7 @@
  * @module app
  */
 
+import { CodeJar } from '../lib/codejar.min.js';
 import { NFABuilder, parseNFAConfig, buildCodeFromSplit, parseSplitFromCode, expandSymbolClass, DEFAULT_SYMBOL_CLASS } from './nfa.js';
 import { NFAVisualizer, compactSymbolLabel } from './visualizer.js';
 
@@ -38,7 +39,7 @@ const elements = {
   splitInput: document.getElementById('split-input'),
   unifiedInput: document.getElementById('unified-input'),
 
-  // Split mode inputs
+  // Split mode inputs (now divs for CodeJar)
   symbolsInput: document.getElementById('symbols-input'),
   startStateInput: document.getElementById('start-state'),
   transitionInput: document.getElementById('transition-fn'),
@@ -76,6 +77,45 @@ const elements = {
 let currentNFA = null;
 let visualizer = null;
 
+/** CodeJar editor instances */
+const editors = {
+  startState: null,
+  transition: null,
+  accept: null,
+  unified: null
+};
+
+// ============================================
+// CodeJar Setup
+// ============================================
+
+/**
+ * Syntax highlighter using PrismJS
+ */
+function highlight(editor) {
+  const code = editor.textContent;
+  editor.innerHTML = Prism.highlight(code, Prism.languages.javascript, 'javascript');
+}
+
+/**
+ * Initialize CodeJar editors
+ */
+function initEditors() {
+  // Inline editor for startState (no highlighting for simple expressions)
+  editors.startState = CodeJar(elements.startStateInput, () => { }, { tab: '  ' });
+
+  // Block editors with syntax highlighting
+  editors.transition = CodeJar(elements.transitionInput, highlight, { tab: '  ' });
+  editors.accept = CodeJar(elements.acceptInput, highlight, { tab: '  ' });
+  editors.unified = CodeJar(elements.unifiedCodeInput, highlight, { tab: '  ' });
+
+  // Save on changes
+  editors.startState.onUpdate(saveToStorage);
+  editors.transition.onUpdate(saveToStorage);
+  editors.accept.onUpdate(saveToStorage);
+  editors.unified.onUpdate(saveToStorage);
+}
+
 // ============================================
 // Initialization
 // ============================================
@@ -84,6 +124,9 @@ let visualizer = null;
  * Initialize the application: set up event listeners and visualizer
  */
 function init() {
+  // Initialize CodeJar editors
+  initEditors();
+
   // Restore saved inputs from sessionStorage
   restoreFromStorage();
 
@@ -102,10 +145,6 @@ function init() {
 
   // Save inputs on change
   elements.symbolsInput.addEventListener('input', saveToStorage);
-  elements.startStateInput.addEventListener('input', saveToStorage);
-  elements.transitionInput.addEventListener('input', saveToStorage);
-  elements.acceptInput.addEventListener('input', saveToStorage);
-  elements.unifiedCodeInput.addEventListener('input', saveToStorage);
 
   // Initialize visualizer
   visualizer = new NFAVisualizer(elements.cyContainer);
@@ -138,10 +177,10 @@ function init() {
  */
 function saveToStorage() {
   sessionStorage.setItem(STORAGE_KEYS.symbols, elements.symbolsInput.value);
-  sessionStorage.setItem(STORAGE_KEYS.startState, elements.startStateInput.value);
-  sessionStorage.setItem(STORAGE_KEYS.transition, elements.transitionInput.value);
-  sessionStorage.setItem(STORAGE_KEYS.accept, elements.acceptInput.value);
-  sessionStorage.setItem(STORAGE_KEYS.unified, elements.unifiedCodeInput.value);
+  sessionStorage.setItem(STORAGE_KEYS.startState, editors.startState.toString());
+  sessionStorage.setItem(STORAGE_KEYS.transition, editors.transition.toString());
+  sessionStorage.setItem(STORAGE_KEYS.accept, editors.accept.toString());
+  sessionStorage.setItem(STORAGE_KEYS.unified, editors.unified.toString());
   sessionStorage.setItem(STORAGE_KEYS.unifiedMode, elements.unifiedToggle.checked);
   sessionStorage.setItem(STORAGE_KEYS.testInput, elements.testInput.value);
 }
@@ -159,10 +198,10 @@ function restoreFromStorage() {
   const testInput = sessionStorage.getItem(STORAGE_KEYS.testInput);
 
   if (symbols !== null) elements.symbolsInput.value = symbols;
-  if (startState !== null) elements.startStateInput.value = startState;
-  if (transition !== null) elements.transitionInput.value = transition;
-  if (accept !== null) elements.acceptInput.value = accept;
-  if (unified !== null) elements.unifiedCodeInput.value = unified;
+  if (startState !== null) editors.startState.updateCode(startState);
+  if (transition !== null) editors.transition.updateCode(transition);
+  if (accept !== null) editors.accept.updateCode(accept);
+  if (unified !== null) editors.unified.updateCode(unified);
   if (testInput !== null) elements.testInput.value = testInput;
 
   // Restore mode toggle state
@@ -187,20 +226,20 @@ function handleModeToggle() {
   if (isUnified) {
     // Convert split inputs to unified code
     const code = buildCodeFromSplit(
-      elements.startStateInput.value || '"start"',
-      elements.transitionInput.value || 'return undefined;',
-      elements.acceptInput.value || 'return false;'
+      editors.startState.toString() || '"start"',
+      editors.transition.toString() || 'return undefined;',
+      editors.accept.toString() || 'return false;'
     );
-    elements.unifiedCodeInput.value = code;
+    editors.unified.updateCode(code);
 
     elements.splitInput.classList.add('hidden');
     elements.unifiedInput.classList.remove('hidden');
   } else {
     // Parse unified code back to split inputs
-    const parts = parseSplitFromCode(elements.unifiedCodeInput.value);
-    elements.startStateInput.value = parts.startState;
-    elements.transitionInput.value = parts.transitionBody;
-    elements.acceptInput.value = parts.acceptBody;
+    const parts = parseSplitFromCode(editors.unified.toString());
+    editors.startState.updateCode(parts.startState);
+    editors.transition.updateCode(parts.transitionBody);
+    editors.accept.updateCode(parts.acceptBody);
 
     elements.unifiedInput.classList.add('hidden');
     elements.splitInput.classList.remove('hidden');
@@ -250,13 +289,13 @@ function handleBuild() {
  */
 function getCurrentCode() {
   if (elements.unifiedToggle.checked) {
-    return elements.unifiedCodeInput.value;
+    return editors.unified.toString();
   }
 
   return buildCodeFromSplit(
-    elements.startStateInput.value || '"start"',
-    elements.transitionInput.value || 'return undefined;',
-    elements.acceptInput.value || 'return false;'
+    editors.startState.toString() || '"start"',
+    editors.transition.toString() || 'return undefined;',
+    editors.accept.toString() || 'return false;'
   );
 }
 

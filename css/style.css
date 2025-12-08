@@ -24,6 +24,9 @@
   /* Syntax highlighting */
   --color-syntax-keyword: #c792ea;
   --color-syntax-comment: #6a7080;
+  --color-syntax-string: #7ec699;
+  --color-syntax-number: #f08d49;
+  --color-syntax-function: #6196cc;
 
   /* Accent colors */
   --color-primary: #6c9eff;
@@ -387,7 +390,6 @@ header {
 /* --------------------------------------------------------------------------
    Form Elements
    -------------------------------------------------------------------------- */
-textarea,
 input[type="text"] {
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
@@ -404,30 +406,100 @@ input[type="text"] {
   }
 }
 
-.code-block textarea {
+/* --------------------------------------------------------------------------
+   CodeJar Editors
+   -------------------------------------------------------------------------- */
+.code-editor {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
   background: var(--color-surface-raised);
   border: 1px solid var(--color-code-border);
   border-radius: var(--radius-sm);
   padding: var(--space-sm);
+  min-height: 1.6em;
+  white-space: pre-wrap;
+  overflow: auto;
+  color: var(--color-text);
 
   &:focus {
+    outline: none;
     border-color: var(--color-primary);
     background: var(--color-code-bg);
   }
+
+  /* PrismJS token overrides for our theme */
+  .token.comment {
+    color: var(--color-syntax-comment);
+  }
+
+  .token.keyword {
+    color: var(--color-syntax-keyword);
+  }
+
+  .token.string {
+    color: var(--color-syntax-string);
+  }
+
+  .token.number {
+    color: var(--color-syntax-number);
+  }
+
+  .token.function {
+    color: var(--color-syntax-function);
+  }
+
+  .token.operator {
+    color: var(--color-text-secondary);
+  }
+
+  .token.punctuation {
+    color: var(--color-text-secondary);
+  }
 }
 
-/* Unified input textarea */
-#unified-input textarea {
-  background: var(--color-code-bg);
-  border: 1px solid var(--color-code-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-md);
-  height: 100%;
-  min-height: 400px;
+.code-editor-inline {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+  color: var(--color-text);
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed var(--color-border);
+  outline: none;
+  min-width: 2em;
+  padding: 0 2px;
+  display: inline;
+  cursor: text;
+
+  &:hover {
+    border-bottom-color: var(--color-text-muted);
+  }
 
   &:focus {
-    border-color: var(--color-primary);
+    outline: none;
+    border-bottom-style: solid;
+    border-bottom-color: var(--color-primary);
   }
+}
+
+/* Resizable editor wrapper */
+.editor-resize-wrapper {
+  resize: vertical;
+  overflow: hidden;
+  min-height: 2.5em;
+  max-height: 50vh;
+
+  .code-editor {
+    height: 100%;
+    min-height: 100%;
+    box-sizing: border-box;
+  }
+}
+
+.editor-resize-wrapper-large {
+  min-height: 300px;
+  max-height: 80vh;
 }
 
 /* --------------------------------------------------------------------------
