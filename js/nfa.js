@@ -25,16 +25,11 @@ export const DEFAULT_SYMBOL_CLASS = '1-9';
  * Full set of symbols the app can use.
  * Includes digits, letters, and common punctuation.
  */
-const ALL_SYMBOLS = [
-  // Digits 0-9
-  ...'0123456789',
-  // Lowercase letters
-  ...'abcdefghijklmnopqrstuvwxyz',
-  // Uppercase letters
-  ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
-  // Common punctuation/symbols
-  ...'_-+*/.@#$%&!?'
-];
+const ALL_SYMBOLS =
+  '0123456789' +
+  'abcdefghijklmnopqrstuvwxyz' +
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZ' +
+  '_-+*/.@#$%&!?';
 
 // ============================================
 // NFA Class
@@ -385,10 +380,10 @@ export class NFABuilder {
 
 /**
  * Expand a regex character class pattern into an array of matching symbols.
- * Uses JavaScript's regex engine to test each symbol in ALL_SYMBOLS.
+ * Uses JavaScript's regex engine to extract matching characters from ALL_SYMBOLS.
  *
  * @param {string} charClass - Character class content (without brackets), e.g. "1-9", "a-zA-Z0-9_"
- * @returns {Array<string|number>} Array of matching symbols (numbers are returned as numbers)
+ * @returns {Array<string|number>} Array of matching symbols (digits are returned as numbers)
  * @throws {Error} If the character class pattern is invalid
  */
 export function expandSymbolClass(charClass) {
@@ -397,18 +392,15 @@ export function expandSymbolClass(charClass) {
   }
 
   try {
-    const regex = new RegExp(`^[${charClass}]$`);
-    const matches = ALL_SYMBOLS.filter(s => regex.test(String(s)));
+    const regex = new RegExp(`[${charClass}]`, 'g');
+    const matches = ALL_SYMBOLS.match(regex);
 
-    if (matches.length === 0) {
+    if (!matches || matches.length === 0) {
       throw new Error(`No symbols match the pattern [${charClass}]`);
     }
 
-    // Convert numeric strings to numbers for backward compatibility
-    return matches.map(s => {
-      const num = Number(s);
-      return !isNaN(num) && s.match(/^[0-9]$/) ? num : s;
-    });
+    // Convert digit characters to numbers for backward compatibility
+    return matches.map(s => s >= '0' && s <= '9' ? Number(s) : s);
   } catch (e) {
     if (e.message.includes('No symbols match')) throw e;
     throw new Error(`Invalid character class pattern: ${e.message}`);
@@ -489,47 +481,55 @@ ${indentedAccept}
 }
 
 /**
- * Parse unified code back into split components
+ * Parse unified code back into split components.
+ *
+ * Uses execution-based parsing for robustness:
+ * 1. Execute the code to get actual JS objects
+ * 2. Extract function bodies from the compiled functions
+ * 3. Serialize startState back to code
  *
  * @param {string} code - Unified code string
  * @returns {{startState: string, transitionBody: string, acceptBody: string}}
  */
 export function parseSplitFromCode(code) {
-  const result = {
-    startState: '',
-    transitionBody: '',
-    acceptBody: ''
-  };
+  try {
+    // Execute the code to get the actual objects
+    const parsed = new Function(`${code}; return { startState, transition, accept };`)();
 
-  // Extract startState assignment
-  const startMatch = code.match(/startState\s*=\s*(.+?);/);
-  if (startMatch) {
-    result.startState = startMatch[1].trim();
+    return {
+      startState: JSON.stringify(parsed.startState),
+      transitionBody: extractFunctionBody(parsed.transition),
+      acceptBody: extractFunctionBody(parsed.accept)
+    };
+  } catch {
+    // Fallback to empty if code is invalid
+    return {
+      startState: '',
+      transitionBody: '',
+      acceptBody: ''
+    };
   }
+}
 
-  // Extract transition function body
-  const transitionMatch = code.match(
-    /function\s+transition\s*\(\s*state\s*,\s*symbol\s*\)\s*\{([\s\S]*?)\n\}/
-  );
-  if (transitionMatch) {
-    result.transitionBody = transitionMatch[1]
-      .split('\n')
-      .map(line => line.replace(/^  /, ''))
-      .join('\n')
-      .trim();
-  }
+/**
+ * Extract function body text from a function object.
+ * Removes the 2-space base indent that buildCodeFromSplit adds.
+ */
+function extractFunctionBody(fn) {
+  const source = fn.toString();
+  // Find the opening brace and closing brace
+  const start = source.indexOf('{') + 1;
+  const end = source.lastIndexOf('}');
+  if (start === 0 || end === -1) return '';
 
-  // Extract accept function body
-  const acceptMatch = code.match(
-    /function\s+accept\s*\(\s*state\s*\)\s*\{([\s\S]*?)\n?\}$/
-  );
-  if (acceptMatch) {
-    result.acceptBody = acceptMatch[1]
-      .split('\n')
-      .map(line => line.replace(/^  /, ''))
-      .join('\n')
-      .trim();
-  }
+  // Extract body and remove leading/trailing whitespace
+  let body = source.slice(start, end);
 
-  return result;
+  // Remove leading newline if present
+  if (body.startsWith('\n')) body = body.slice(1);
+  // Remove trailing newline if present
+  if (body.endsWith('\n')) body = body.slice(0, -1);
+
+  // Remove 2-space base indent from each line
+  return body.replace(/^ {2}/gm, '');
 }

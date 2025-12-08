@@ -42,7 +42,7 @@ const FONT_FAMILY = '-apple-system, BlinkMacSystemFont, sans-serif';
 
 /**
  * Cytoscape stylesheet for NFA visualization
- * 
+ *
  * Style priority (later rules override earlier):
  * 1. Base node/edge styles
  * 2. State type styles (start, accept, dead)
