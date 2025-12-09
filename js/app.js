@@ -7,7 +7,8 @@
  */
 
 import { CodeJar } from '../lib/codejar.min.js';
-import { NFABuilder, parseNFAConfig, buildCodeFromSplit, parseSplitFromCode, expandSymbolClass, DEFAULT_SYMBOL_CLASS } from './nfa.js';
+import { DEFAULT_SYMBOL_CLASS } from './nfa.js';
+import { NFABuilder, parseNFAConfig, buildCodeFromSplit, parseSplitFromCode, expandSymbolClass } from './nfa_builder.js';
 import { NFAVisualizer, compactSymbolLabel } from './visualizer.js';
 
 // ============================================

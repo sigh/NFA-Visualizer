@@ -1,0 +1,15 @@
+{
+  "name": "nfa-visualizer",
+  "version": "1.0.0",
+  "description": "Interactive NFA visualizer",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/run.js"
+  },
+  "keywords": [
+    "nfa",
+    "automata",
+    "visualizer"
+  ],
+  "license": "MIT"
+}

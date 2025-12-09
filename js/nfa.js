@@ -3,23 +3,112 @@
  *
  * This module provides:
  * - NFA class for representing and running finite automata
- * - NFABuilder for constructing NFAs from JavaScript function definitions
- * - Helper functions for parsing user code
+ * - StateTransformation class for state remapping operations
  *
  * @module nfa
  */
-
-import { canonicalJSON } from './util.js';
 
 // ============================================
 // Constants
 // ============================================
 
-/** Default maximum number of states before throwing an error */
-const DEFAULT_MAX_STATES = 1000;
-
 /** Default symbol class (regex character class syntax) */
 export const DEFAULT_SYMBOL_CLASS = '1-9';
+
+// ============================================
+// State Transformation
+// ============================================
+
+/**
+ * Encapsulates a state remapping for NFA transformations.
+ * Allows stacking/composing transformations without modifying the original NFA.
+ *
+ * The remap array maps original state IDs to canonical state IDs:
+ * - remap[state] >= 0: maps to canonical representative
+ * - remap[state] === -1: state is deleted
+ */
+export class StateTransformation {
+  /**
+   * @param {Int32Array} remap - Remapping array
+   */
+  constructor(remap) {
+    /** @type {Int32Array} */
+    this.remap = remap;
+  }
+
+  /**
+   * Create an identity transformation (no changes).
+   * @param {number} numStates - Number of states
+   * @returns {StateTransformation}
+   */
+  static identity(numStates) {
+    const remap = new Int32Array(numStates);
+    for (let i = 0; i < numStates; i++) remap[i] = i;
+    return new StateTransformation(remap);
+  }
+
+  /**
+   * Create a transformation that deletes specified states.
+   * @param {number} numStates - Total number of states
+   * @param {Set<number>|Array<number>} deletedStates - States to delete
+   * @returns {StateTransformation}
+   */
+  static deletion(numStates, deletedStates) {
+    const deleted = deletedStates instanceof Set ? deletedStates : new Set(deletedStates);
+    const remap = new Int32Array(numStates);
+    for (let i = 0; i < numStates; i++) {
+      remap[i] = deleted.has(i) ? -1 : i;
+    }
+    return new StateTransformation(remap);
+  }
+
+  /** Number of states in the original NFA */
+  get numStates() {
+    return this.remap.length;
+  }
+
+  /** Get the set of deleted state IDs */
+  getDeletedStates() {
+    const deleted = new Set();
+    for (let i = 0; i < this.remap.length; i++) {
+      if (this.remap[i] === -1) deleted.add(i);
+    }
+    return deleted;
+  }
+
+  /** Get the set of active (non-deleted) state IDs */
+  getActiveStates() {
+    const active = [];
+    for (let i = 0; i < this.remap.length; i++) {
+      if (this.remap[i] !== -1) active.push(i);
+    }
+    return active;
+  }
+
+  /** Check if a state is deleted */
+  isDeleted(stateId) {
+    return this.remap[stateId] === -1;
+  }
+
+  /** Get the canonical representative for a state (-1 if deleted) */
+  getCanonical(stateId) {
+    return this.remap[stateId];
+  }
+
+  /**
+   * Compose this transformation with another: apply other after this.
+   * @param {StateTransformation} other - Transformation to apply after this one
+   * @returns {StateTransformation} Composed transformation
+   */
+  compose(other) {
+    const result = new Int32Array(this.remap.length);
+    for (let i = 0; i < this.remap.length; i++) {
+      const intermediate = this.remap[i];
+      result[i] = intermediate === -1 ? -1 : other.remap[intermediate];
+    }
+    return new StateTransformation(result);
+  }
+}
 
 /**
  * Full set of symbols the app can use.
@@ -280,345 +369,198 @@ export class NFA {
 
     return deadStates;
   }
-}
-
-// ============================================
-// NFA Builder
-// ============================================
-
-/**
- * Builds an NFA by exploring all reachable states from user-defined functions.
- *
- * This implements a state-space exploration algorithm:
- * 1. Start from initial state(s)
- * 2. For each state, try all possible input values
- * 3. Add transitions to resulting states
- * 4. Continue until no new states are discovered
- */
-export class NFABuilder {
-  /**
-   * @param {Object} config - NFA configuration
-   * @param {any} config.startState - Initial state value (or array for multiple)
-   * @param {Function} config.transition - (state, symbol) => nextState(s)
-   * @param {Function} config.accept - (state) => boolean
-   * @param {Object} options - Builder options
-   * @param {number} options.maxStates - Maximum states before error
-   * @param {Array} options.symbols - Array of symbols to explore
-   */
-  constructor(config, options = {}) {
-    this.startState = config.startState;
-    this.transitionFn = config.transition;
-    this.acceptFn = config.accept;
-    this.maxStates = options.maxStates || DEFAULT_MAX_STATES;
-    this.symbols = options.symbols || expandSymbolClass(DEFAULT_SYMBOL_CLASS);
-  }
 
   /**
-   * Build and return the NFA
-   * @returns {NFA}
-   * @throws {Error} If state limit is exceeded or state is invalid
+   * Find equivalent states using partition refinement (Hopcroft-style).
+   * Two states are equivalent if they have:
+   * 1. Same acceptance status
+   * 2. For each symbol, transitions to equivalent sets of states
+   *
+   * @param {StateTransformation} [transform] - Optional existing transformation to build upon
+   * @returns {StateTransformation} Transformation that merges equivalent states
    */
-  build() {
-    const nfa = new NFA(this.symbols);
-
-    // Maps for state serialization (user values <-> NFA IDs)
-    const stateStrToId = new Map();
-    const idToStateStr = new Map();
-
-    // Wrap user functions to provide better error messages
-    const wrappedAccept = this._wrapAcceptFn(this.acceptFn);
-    const wrappedTransition = this._wrapTransitionFn(this.transitionFn);
-
-    /**
-     * Add a state to the NFA, returning existing ID if already added
-     */
-    const addState = (stateStr) => {
-      if (stateStrToId.has(stateStr)) {
-        return stateStrToId.get(stateStr);
-      }
-
-      if (nfa.numStates() >= this.maxStates) {
-        throw new Error(`NFA exceeded maximum state limit (${this.maxStates}). Consider simplifying your state machine.`);
-      }
-
-      const id = nfa.addState();
-      stateStrToId.set(stateStr, id);
-      idToStateStr.set(id, stateStr);
-
-      // Check if this state is accepting
-      if (wrappedAccept(stateStr)) {
-        nfa.setAccept(id);
-      }
-
-      return id;
-    };
-
-    // Initialize with start states
-    // Use array-based queue with head pointer for O(1) dequeue
-    const queue = [];
-    let queueHead = 0;
-    const startStates = this._normalizeToArray(this.startState);
-
-    for (const startState of startStates) {
-      const stateStr = this._serializeState(startState);
-      const id = addState(stateStr);
-      nfa.setStart(id);
-      queue.push(id);
+  getEquivalentStateRemap(transform = null) {
+    const numStates = this._transitions.length;
+    if (numStates === 0) {
+      return transform || StateTransformation.identity(0);
     }
 
-    // Explore all reachable states using BFS for nicer state numbering
-    const visited = new Set();
+    // Start from existing transformation or identity
+    if (!transform) {
+      transform = StateTransformation.identity(numStates);
+    }
 
-    while (queueHead < queue.length) {
-      const currentId = queue[queueHead++];
-      if (visited.has(currentId)) continue;
-      visited.add(currentId);
+    const activeStates = transform.getActiveStates();
+    if (activeStates.length === 0) {
+      return transform;
+    }
 
-      const stateStr = idToStateStr.get(currentId);
+    // partition[state] = partition ID (-1 for deleted states)
+    const partition = new Int32Array(numStates).fill(-1);
+    let nextPartitionId = 0;
 
-      // Try all configured symbols (using index for efficient storage)
-      for (let symbolIndex = 0; symbolIndex < this.symbols.length; symbolIndex++) {
-        const symbol = this.symbols[symbolIndex];
-        const nextStateStrs = wrappedTransition(stateStr, symbol);
+    // Initial partition: group by acceptance status
+    for (const s of activeStates) {
+      const isAccept = this.acceptStates.has(s);
+      // Use partition 0 for non-accepting, 1 for accepting
+      partition[s] = isAccept ? 1 : 0;
+    }
+    nextPartitionId = 2;
 
-        for (const nextStateStr of nextStateStrs) {
-          const nextId = addState(nextStateStr);
-          nfa.addTransition(currentId, nextId, symbolIndex);
+    // Partition refinement: split partitions until stable
+    let changed = true;
+    while (changed) {
+      changed = false;
 
-          if (!visited.has(nextId)) {
-            queue.push(nextId);
+      // Group states by current partition
+      const partitionGroups = new Map();
+      for (const s of activeStates) {
+        const partId = partition[s];
+        if (!partitionGroups.has(partId)) partitionGroups.set(partId, []);
+        partitionGroups.get(partId).push(s);
+      }
+
+      // Try to split each partition based on transition signatures
+      for (const members of partitionGroups.values()) {
+        if (members.length <= 1) continue;
+
+        // Group members by their transition signature
+        const bySignature = new Map();
+        for (const state of members) {
+          const sig = this._computeTransitionSignature(state, partition);
+          if (!bySignature.has(sig)) bySignature.set(sig, []);
+          bySignature.get(sig).push(state);
+        }
+
+        // Split if multiple signatures exist
+        if (bySignature.size > 1) {
+          changed = true;
+          let first = true;
+          for (const states of bySignature.values()) {
+            if (first) {
+              first = false; // Keep first group in original partition
+            } else {
+              const newPartId = nextPartitionId++;
+              for (const s of states) partition[s] = newPartId;
+            }
           }
         }
       }
     }
 
-    // Store state labels for visualization
-    nfa.stateLabels = idToStateStr;
+    // Build remap: each state maps to the smallest state ID in its partition
+    const remap = new Int32Array(transform.remap);
+    const canonicalState = new Map();
 
-    return nfa;
-  }
-
-  /**
-   * Wrap the transition function to handle errors and normalize output.
-   * Converts digit strings to Numbers for user-facing API compatibility.
-   * @private
-   */
-  _wrapTransitionFn(fn) {
-    return (stateStr, symbol) => {
-      const stateValue = this._deserializeState(stateStr);
-      // Convert digit strings to numbers for user function
-      const userSymbol = symbol >= '0' && symbol <= '9' ? Number(symbol) : symbol;
-      try {
-        const result = fn(stateValue, userSymbol);
-        const nextStates = this._normalizeToArray(result);
-        return nextStates
-          .filter(s => s !== undefined)
-          .map(s => this._serializeState(s));
-      } catch (err) {
-        throw new Error(
-          `Transition function threw for (${stateStr}, ${symbol}): ${err?.message || err}`);
+    for (const s of activeStates) {
+      const partId = partition[s];
+      if (!canonicalState.has(partId) || s < canonicalState.get(partId)) {
+        canonicalState.set(partId, s);
       }
-    };
+    }
+
+    for (const s of activeStates) {
+      remap[s] = canonicalState.get(partition[s]);
+    }
+
+    return new StateTransformation(remap);
   }
 
   /**
-   * Wrap the accept function to handle errors
+   * Compute a transition signature for partition refinement.
+   * Returns a string encoding which partitions are reachable on each symbol.
    * @private
    */
-  _wrapAcceptFn(fn) {
-    return (stateStr) => {
-      const stateValue = this._deserializeState(stateStr);
-      try {
-        return !!fn(stateValue);
-      } catch (err) {
-        throw new Error(
-          `Accept function threw for ${stateStr}: ${err?.message || err}`);
+  _computeTransitionSignature(stateId, partition) {
+    const sigParts = [];
+
+    for (let symIdx = 0; symIdx < this.symbols.length; symIdx++) {
+      const targets = this.getTransitions(stateId, symIdx);
+      if (targets.length === 0) {
+        sigParts.push('');
+      } else {
+        // Get partition IDs of targets, filter deleted, sort for canonical form
+        const targetPartitions = [];
+        for (const t of targets) {
+          const p = partition[t];
+          if (p !== -1) targetPartitions.push(p);
+        }
+        targetPartitions.sort((a, b) => a - b);
+        sigParts.push(targetPartitions.join(','));
       }
-    };
-  }
+    }
 
-  /** Normalize a value to an array */
-  _normalizeToArray(value) {
-    if (value === undefined) return [];
-    return Array.isArray(value) ? value : [value];
+    return sigParts.join('|');
   }
 
   /**
-   * Serialize a state value to a canonical string for use as map key.
-   * Objects are serialized with sorted keys for order-independence.
-   * @private
+   * Apply a transformation to create a new minimized NFA.
+   * @param {StateTransformation} transform - Transformation from getEquivalentStateRemap
+   * @returns {NFA} New NFA with merged/deleted states
    */
-  _serializeState(state) {
-    if (Array.isArray(state)) {
-      throw new Error('State cannot be an array (arrays are reserved for multiple states)');
-    }
-    return canonicalJSON(state);
-  }
+  applyTransformation(transform) {
+    const remap = transform.remap;
 
-  /**
-   * Deserialize a state string back to its original value
-   * @private
-   */
-  _deserializeState(stateStr) {
-    return JSON.parse(stateStr);
-  }
-}
+    // Find canonical states (states where remap[s] === s and s !== -1)
+    const canonicalStates = [];
+    const oldToNew = new Int32Array(remap.length).fill(-1);
 
-// ============================================
-// Symbol Class Expansion
-// ============================================
-
-/**
- * Expand a regex character class pattern into an array of matching symbols.
- * Uses JavaScript's regex engine to extract matching characters from ALL_SYMBOLS.
- *
- * @param {string} charClass - Character class content (without brackets), e.g. "1-9", "a-zA-Z0-9_"
- * @returns {string[]} Array of matching symbol strings
- * @throws {Error} If the character class pattern is invalid
- */
-export function expandSymbolClass(charClass) {
-  if (!charClass || charClass.trim() === '') {
-    throw new Error('Symbol class cannot be empty');
-  }
-
-  try {
-    const regex = new RegExp(`[${charClass}]`, 'g');
-    const matches = ALL_SYMBOLS.match(regex);
-
-    if (!matches || matches.length === 0) {
-      throw new Error(`No symbols match the pattern [${charClass}]`);
+    for (let s = 0; s < remap.length; s++) {
+      if (remap[s] === s) {
+        oldToNew[s] = canonicalStates.length;
+        canonicalStates.push(s);
+      }
     }
 
-    return matches;
-  } catch (e) {
-    if (e.message.includes('No symbols match')) throw e;
-    throw new Error(`Invalid character class pattern: ${e.message}`);
-  }
-}
-
-// ============================================
-// Code Parsing Utilities
-// ============================================
-
-/**
- * Parse and compile user-provided JavaScript code into an NFA config object.
- *
- * The code should define:
- * - startState: initial state value
- * - transition(state, symbol): returns next state(s)
- * - accept(state): returns true if accepting
- *
- * @param {string} code - User's JavaScript code
- * @returns {{startState: any, transition: Function, accept: Function}}
- * @throws {Error} If code is invalid or missing required definitions
- */
-export function parseNFAConfig(code) {
-  const wrappedCode = `
-    ${code}
-    return { startState, transition, accept };
-  `;
-
-  try {
-    const fn = new Function(wrappedCode);
-    const result = fn();
-
-    // Validate required definitions
-    if (result.startState === undefined) {
-      throw new Error('startState is not defined');
-    }
-    if (typeof result.transition !== 'function') {
-      throw new Error('transition must be a function');
-    }
-    if (typeof result.accept !== 'function') {
-      throw new Error('accept must be a function');
+    // Map non-canonical states through canonical
+    for (let s = 0; s < remap.length; s++) {
+      if (remap[s] !== -1 && remap[s] !== s) {
+        oldToNew[s] = oldToNew[remap[s]];
+      }
     }
 
-    return result;
-  } catch (e) {
-    throw new Error(`Code error: ${e.message}`);
+    // Build new NFA
+    const newNfa = new NFA(this.symbols);
+
+    // Add states
+    for (const oldId of canonicalStates) {
+      const newId = newNfa.addState(this.acceptStates.has(oldId));
+      // Copy label if exists
+      if (this.stateLabels.has(oldId)) {
+        newNfa.stateLabels.set(newId, this.stateLabels.get(oldId));
+      }
+    }
+
+    // Set start states
+    for (const oldStart of this.startStates) {
+      const newStart = oldToNew[oldStart];
+      if (newStart !== -1) {
+        newNfa.setStart(newStart);
+      }
+    }
+
+    // Add transitions (deduplicating via Set)
+    for (const oldId of canonicalStates) {
+      const newFromId = oldToNew[oldId];
+      const oldTransitions = this._transitions[oldId];
+      if (!oldTransitions) continue;
+
+      for (let symIdx = 0; symIdx < this.symbols.length; symIdx++) {
+        const oldTargets = oldTransitions[symIdx];
+        if (!oldTargets) continue;
+
+        const newTargets = new Set();
+        for (const oldTarget of oldTargets) {
+          const newTarget = oldToNew[oldTarget];
+          if (newTarget !== -1) newTargets.add(newTarget);
+        }
+
+        for (const newTarget of newTargets) {
+          newNfa.addTransition(newFromId, newTarget, symIdx);
+        }
+      }
+    }
+
+    return newNfa;
   }
-}
-
-/**
- * Build unified code string from split input components
- *
- * @param {string} startStateCode - The startState expression
- * @param {string} transitionBody - Body of the transition function
- * @param {string} acceptBody - Body of the accept function
- * @returns {string} Complete code string
- */
-export function buildCodeFromSplit(startStateCode, transitionBody, acceptBody) {
-  const indentedTransition = transitionBody
-    .split('\n')
-    .map(line => '  ' + line)
-    .join('\n');
-
-  const indentedAccept = acceptBody
-    .split('\n')
-    .map(line => '  ' + line)
-    .join('\n');
-
-  return `startState = ${startStateCode};
-
-function transition(state, symbol) {
-${indentedTransition}
-}
-
-function accept(state) {
-${indentedAccept}
-}`;
-}
-
-/**
- * Parse unified code back into split components.
- *
- * Uses execution-based parsing for robustness:
- * 1. Execute the code to get actual JS objects
- * 2. Extract function bodies from the compiled functions
- * 3. Serialize startState back to code
- *
- * @param {string} code - Unified code string
- * @returns {{startState: string, transitionBody: string, acceptBody: string}}
- */
-export function parseSplitFromCode(code) {
-  try {
-    // Execute the code to get the actual objects
-    const parsed = new Function(`${code}; return { startState, transition, accept };`)();
-
-    return {
-      startState: JSON.stringify(parsed.startState),
-      transitionBody: extractFunctionBody(parsed.transition),
-      acceptBody: extractFunctionBody(parsed.accept)
-    };
-  } catch {
-    // Fallback to empty if code is invalid
-    return {
-      startState: '',
-      transitionBody: '',
-      acceptBody: ''
-    };
-  }
-}
-
-/**
- * Extract function body text from a function object.
- * Removes the 2-space base indent that buildCodeFromSplit adds.
- */
-function extractFunctionBody(fn) {
-  const source = fn.toString();
-  // Find the opening brace and closing brace
-  const start = source.indexOf('{') + 1;
-  const end = source.lastIndexOf('}');
-  if (start === 0 || end === -1) return '';
-
-  // Extract body and remove leading/trailing whitespace
-  let body = source.slice(start, end);
-
-  // Remove leading newline if present
-  if (body.startsWith('\n')) body = body.slice(1);
-  // Remove trailing newline if present
-  if (body.endsWith('\n')) body = body.slice(0, -1);
-
-  // Remove 2-space base indent from each line
-  return body.replace(/^ {2}/gm, '');
 }
