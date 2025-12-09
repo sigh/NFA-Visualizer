@@ -439,7 +439,6 @@ class App {
    */
   updateStateList() {
     const states = this.currentNFA.getStateInfo();
-    const labels = this.currentNFA.stateLabels;
 
     // Build map of canonical state -> list of source states (cached for transitions display)
     this.currentMergedSources = new Map();
@@ -461,8 +460,7 @@ class App {
       if (this.currentTransform.remap[state.id] !== state.id) continue;
 
       const sources = this.currentMergedSources.get(state.id) || [state.id];
-      const label = labels?.get(state.id) || `q${state.id}`;
-      const item = this.createStateItem(state, label, sources, this.currentNFA);
+      const item = this.createStateItem(state, sources);
       this.elements.stateList.appendChild(item);
     }
   }
@@ -470,11 +468,9 @@ class App {
   /**
    * Create a state item DOM element
    * @param {Object} state - The state object
-   * @param {string} label - The state label (used for non-merged states)
-   * @param {number[]} sources - Array of source state IDs for this state
-   * @param {import('./nfa.js').NFA} nfa - The NFA for looking up labels
+   * @param {number[]} sources - Array of source state IDs for this (possibly merged) state
    */
-  createStateItem(state, label, sources, nfa) {
+  createStateItem(state, sources) {
     const item = document.createElement('div');
     item.className = 'state-item';
     item.dataset.stateId = state.id;
@@ -499,8 +495,8 @@ class App {
       for (const id of sources) {
         const sourceDiv = document.createElement('div');
         sourceDiv.className = 'state-source-item';
-        const sourceLabel = nfa.stateLabels.get(id);
-        sourceDiv.textContent = sourceLabel !== null && sourceLabel !== undefined
+        const sourceLabel = this.currentNFA.stateLabels.get(id);
+        sourceDiv.textContent = sourceLabel != null
           ? `q${id}: ${sourceLabel}`
           : `q${id}`;
         sourcesList.appendChild(sourceDiv);
@@ -509,7 +505,7 @@ class App {
     } else {
       const labelSpan = document.createElement('span');
       labelSpan.className = 'state-label';
-      labelSpan.textContent = label;
+      labelSpan.textContent = this.currentNFA.stateLabels.get(state.id) ?? `q${state.id}`;
       header.append(idSpan, ' = ', labelSpan);
     }
 
@@ -580,18 +576,32 @@ class App {
     // Clear and rebuild transitions content
     transitionsEl.replaceChildren();
 
-    const transitions = this.currentNFA.getTransitionsFrom(stateId);
-    if (transitions.length === 0) {
+    // Get transitions and map through current transform
+    const rawTransitions = this.currentNFA.getTransitionsFrom(stateId);
+
+    // Group transitions by canonical target state, filtering deleted states
+    const byCanonicalTarget = new Map();
+    for (const { to, symbols } of rawTransitions) {
+      const canonical = this.currentTransform.remap[to];
+      if (canonical === -1) continue; // Skip deleted states
+
+      if (!byCanonicalTarget.has(canonical)) {
+        byCanonicalTarget.set(canonical, new Set());
+      }
+      for (const symbol of symbols) {
+        byCanonicalTarget.get(canonical).add(symbol);
+      }
+    }
+
+    if (byCanonicalTarget.size === 0) {
       const row = document.createElement('div');
       row.className = 'transition-row';
       row.textContent = 'No outgoing transitions';
       transitionsEl.appendChild(row);
     } else {
-      for (const { to, symbols } of transitions) {
-        // Use prime notation if target state absorbed multiple states
-        const targetSources = this.currentMergedSources?.get(to);
-        const isMerged = targetSources && targetSources.length > 1;
-        transitionsEl.appendChild(this.createTransitionRow(to, symbols, isMerged));
+      for (const [canonical, symbolSet] of byCanonicalTarget) {
+        const isMerged = (this.currentMergedSources?.get(canonical)?.length ?? 1) > 1;
+        transitionsEl.appendChild(this.createTransitionRow(canonical, [...symbolSet], isMerged));
       }
     }
     transitionsEl.classList.remove('hidden');
