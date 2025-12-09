@@ -290,11 +290,34 @@ const CYTOSCAPE_STYLE = [
       'curve-style': 'straight'
     }
   },
-  // Hidden elements (for dead state toggle)
+  // Hidden elements (general purpose)
   {
     selector: '.hidden',
     style: {
       'display': 'none'
+    }
+  },
+  // Merged elements (hidden when merge toggle is on)
+  {
+    selector: '.merged',
+    style: {
+      'display': 'none'
+    }
+  },
+  // Merged edges are hidden by default (shown when merging is active)
+  {
+    selector: '.merged-edge',
+    style: {
+      'display': 'none'
+    }
+  },
+  // Combined nodes (canonical nodes that absorbed other states)
+  {
+    selector: 'node.combined',
+    style: {
+      'shape': 'diamond',
+      'width': 50,
+      'height': 50
     }
   }
 ];
@@ -371,29 +394,75 @@ export class NFAVisualizer {
     this.container = container;
     this.cy = null;
     this.nfa = null;
-    this.hideDeadStates = false;
+    this.transform = null;
   }
 
-  /** Set whether to hide dead states */
-  setHideDeadStates(hide) {
-    if (this.hideDeadStates === hide) return;
-    this.hideDeadStates = hide;
-    if (this.cy) {
-      // Toggle visibility without re-rendering
-      if (hide) {
-        this.cy.$('.dead').addClass('hidden');
-      } else {
-        this.cy.$('.dead').removeClass('hidden');
-      }
+  /**
+   * Check if transform is active (has non-identity mappings)
+   * @returns {boolean}
+   */
+  isTransformActive() {
+    if (!this.transform || !this.nfa) return false;
+    const remap = this.transform.remap;
+    for (let i = 0; i < remap.length; i++) {
+      if (remap[i] !== i) return true;
     }
+    return false;
+  }
+
+  /**
+   * Get current node positions
+   * @returns {Map<number, {x: number, y: number}>} Map of state ID to position
+   */
+  getNodePositions() {
+    const positions = new Map();
+    if (!this.cy) return positions;
+
+    this.cy.nodes().forEach(node => {
+      const id = node.id();
+      if (id.startsWith('s')) {
+        const stateId = parseInt(id.slice(1), 10);
+        const pos = node.position();
+        positions.set(stateId, { x: pos.x, y: pos.y });
+      }
+    });
+
+    return positions;
+  }
+
+  /**
+   * Get current viewport (zoom and pan)
+   * @returns {{zoom: number, pan: {x: number, y: number}}}
+   */
+  getViewport() {
+    if (!this.cy) return { zoom: 1, pan: { x: 0, y: 0 } };
+    return {
+      zoom: this.cy.zoom(),
+      pan: this.cy.pan()
+    };
+  }
+
+  /**
+   * Set viewport (zoom and pan)
+   * @param {{zoom: number, pan: {x: number, y: number}}} viewport
+   */
+  setViewport(viewport) {
+    if (!this.cy || !viewport) return;
+    this.cy.viewport({
+      zoom: viewport.zoom,
+      pan: viewport.pan
+    });
   }
 
   /**
    * Render the NFA visualization
    * @param {import('./nfa.js').NFA} nfa
+   * @param {import('./nfa.js').StateTransformation} [transform] - Optional transformation to apply
+   * @param {Map<number, {x: number, y: number}>} [positions] - Optional preset positions
    */
-  render(nfa) {
+  render(nfa, transform = null, positions = null) {
     this.nfa = nfa;
+    this.transform = transform;
     const elements = this.buildElements();
 
     // Destroy existing instance
@@ -404,27 +473,34 @@ export class NFAVisualizer {
     // Create tooltip element if it doesn't exist
     this.ensureTooltip();
 
+    // Determine layout: use preset positions if provided, otherwise dagre
+    const layoutOptions = positions && positions.size > 0
+      ? this.getPresetLayoutOptions(positions)
+      : this.getLayoutOptions();
+
     // Create new Cytoscape instance
     this.cy = cytoscape({
       container: this.container,
       elements: elements,
       style: CYTOSCAPE_STYLE,
-      layout: this.getLayoutOptions(),
+      layout: layoutOptions,
       wheelSensitivity: 0.3,
       minZoom: 0.3,
       maxZoom: 3
     });
 
-    // Apply current visibility state
-    if (this.hideDeadStates) {
-      this.cy.$('.dead').addClass('hidden');
+    // Show merged edges when transform is active
+    if (this.isTransformActive()) {
+      this.cy.$('.merged-edge').removeClass('merged-edge');
     }
 
     // Setup tooltip events
     this.setupTooltipEvents();
 
-    // Fit to container with padding
-    this.cy.fit(50);
+    // Fit to container with padding (only if no preset positions)
+    if (!positions || positions.size === 0) {
+      this.cy.fit(50);
+    }
   }
 
   /**
@@ -519,16 +595,46 @@ export class NFAVisualizer {
   }
 
   /**
-   * Build Cytoscape elements from NFA
+   * Build Cytoscape elements from NFA, applying transform if present
    */
   buildElements() {
     const elements = [];
     const states = this.nfa.getStateInfo();
     const transitions = this.nfa.getAllTransitions();
+    const transform = this.transform;
 
     const deadStateIds = new Set();
 
-    // Add state nodes (always include all states for consistent layout)
+    // Helper: check if state is canonical (visible when merged)
+    const isCanonical = (stateId) => {
+      if (!transform) return true;
+      return transform.remap[stateId] === stateId;
+    };
+
+    // Helper: get canonical state for a given state
+    const getCanonical = (stateId) => {
+      if (!transform) return stateId;
+      return transform.remap[stateId];
+    };
+
+    // Helper: check if merging is active
+    const isMerging = transform && states.some(s => !isCanonical(s.id));
+
+    // Build map of canonical state -> list of source states that map to it
+    const mergedSources = new Map();
+    if (isMerging) {
+      for (const state of states) {
+        const canonical = getCanonical(state.id);
+        if (canonical !== -1) {
+          if (!mergedSources.has(canonical)) {
+            mergedSources.set(canonical, []);
+          }
+          mergedSources.get(canonical).push(state.id);
+        }
+      }
+    }
+
+    // Add ALL state nodes, marking non-canonical ones as 'merged'
     states.forEach(state => {
       if (state.isDead) deadStateIds.add(state.id);
 
@@ -536,21 +642,33 @@ export class NFAVisualizer {
       if (state.isStart) classes.push('start');
       if (state.isAccept) classes.push('accept');
       if (state.isDead) classes.push('dead');
+      if (!isCanonical(state.id)) {
+        classes.push('merged');
+      } else if (mergedSources.has(state.id) && mergedSources.get(state.id).length > 1) {
+        // This canonical node absorbed other states
+        classes.push('combined');
+      }
+
+      // Get source states for this node (if it's a combined node)
+      const sources = mergedSources.get(state.id) || [state.id];
 
       elements.push({
         data: {
           id: `s${state.id}`,
-          label: this.getStateLabel(state.id),
-          fullLabel: this.getFullStateLabel(state.id)
+          label: this.getStateLabel(state.id, sources),
+          fullLabel: this.getFullStateLabel(state.id, sources)
         },
         classes: classes.join(' ')
       });
 
       // Add invisible marker node + edge for start states
       if (state.isStart) {
+        const markerClasses = ['start-marker'];
+        if (!isCanonical(state.id)) markerClasses.push('merged');
+
         elements.push({
           data: { id: `start-marker-${state.id}` },
-          classes: 'start-marker'
+          classes: markerClasses.join(' ')
         });
         elements.push({
           data: {
@@ -558,22 +676,24 @@ export class NFAVisualizer {
             source: `start-marker-${state.id}`,
             target: `s${state.id}`
           },
-          classes: 'start-arrow'
+          classes: !isCanonical(state.id) ? 'start-arrow merged' : 'start-arrow'
         });
       }
     });
 
-    // Group transitions by source-target pair
-    const grouped = this.groupTransitions(transitions);
-
-    // Add edges
-    grouped.forEach(({ from, to, symbols }, key) => {
+    // Add original edges (hidden when merging)
+    const originalGrouped = this.groupTransitions(transitions);
+    originalGrouped.forEach(({ from, to, symbols }, key) => {
       const isLoop = from === to;
       const isDead = deadStateIds.has(from) || deadStateIds.has(to);
       const label = compactSymbolLabel(symbols);
       const classes = [];
       if (isLoop) classes.push('loop');
       if (isDead) classes.push('dead');
+      // Hide all original edges when merging is active
+      if (isMerging) {
+        classes.push('merged');
+      }
 
       elements.push({
         data: {
@@ -586,23 +706,56 @@ export class NFAVisualizer {
       });
     });
 
+    // Add merged edges (only when merging is active)
+    if (isMerging) {
+      const mergedGrouped = this.groupTransitions(transitions, getCanonical);
+      mergedGrouped.forEach(({ from, to, symbols }, key) => {
+        const isLoop = from === to;
+        const isDead = deadStateIds.has(from) || deadStateIds.has(to);
+        const label = compactSymbolLabel(symbols);
+        const classes = ['merged-edge']; // Visible when merging
+        if (isLoop) classes.push('loop');
+        if (isDead) classes.push('dead');
+
+        elements.push({
+          data: {
+            id: `em${key}`,
+            source: `s${from}`,
+            target: `s${to}`,
+            label: label
+          },
+          classes: classes.join(' ')
+        });
+      });
+    }
+
     return elements;
   }
 
   /**
    * Group transitions by source-target pair
    * @param {Array} transitions
+   * @param {Function} [getCanonical] - Optional function to map state to canonical
    * @returns {Map}
    */
-  groupTransitions(transitions) {
+  groupTransitions(transitions, getCanonical = (x) => x) {
     const grouped = new Map();
 
     transitions.forEach(t => {
-      const key = `${t.from}-${t.to}`;
+      const from = getCanonical(t.from);
+      const to = getCanonical(t.to);
+      // Skip transitions involving deleted states
+      if (from === -1 || to === -1) return;
+
+      const key = `${from}-${to}`;
       if (!grouped.has(key)) {
-        grouped.set(key, { from: t.from, to: t.to, symbols: [] });
+        grouped.set(key, { from, to, symbols: [] });
       }
-      grouped.get(key).symbols.push(t.symbol);
+      // Avoid duplicate symbols
+      const entry = grouped.get(key);
+      if (!entry.symbols.includes(t.symbol)) {
+        entry.symbols.push(t.symbol);
+      }
     });
 
     return grouped;
@@ -623,20 +776,65 @@ export class NFAVisualizer {
   }
 
   /**
-   * Get display label for a state (just the number for graph clarity)
+   * Get layout options for preset positions
+   * @param {Map<number, {x: number, y: number}>} positions
+   * @returns {Object} Layout options
+   */
+  getPresetLayoutOptions(positions) {
+    return {
+      name: 'preset',
+      positions: (node) => {
+        const id = node.id();
+        if (id.startsWith('s')) {
+          const stateId = parseInt(id.slice(1), 10);
+          if (positions.has(stateId)) {
+            return positions.get(stateId);
+          }
+        }
+        // For start markers, position relative to their target
+        if (id.startsWith('start-marker-')) {
+          const targetId = parseInt(id.slice('start-marker-'.length), 10);
+          if (positions.has(targetId)) {
+            const targetPos = positions.get(targetId);
+            return { x: targetPos.x - 60, y: targetPos.y };
+          }
+        }
+        return { x: 0, y: 0 };
+      },
+      padding: 30
+    };
+  }
+
+  /**
+   * Get display label for a state
    * @param {number} stateId
+   * @param {number[]} sources - Source state IDs for this node
    * @returns {string}
    */
-  getStateLabel(stateId) {
+  getStateLabel(stateId, sources) {
+    // If this node absorbed other states, show with prime notation
+    if (sources.length > 1) {
+      return `q'${stateId}`;
+    }
     return `q${stateId}`;
   }
 
   /**
    * Get full label for a state (used in tooltips)
    * @param {number} stateId
+   * @param {number[]} sources - Source state IDs for this node
    * @returns {string}
    */
-  getFullStateLabel(stateId) {
+  getFullStateLabel(stateId, sources) {
+    // If this node absorbed other states, list each source on its own line
+    if (sources.length > 1) {
+      const sourceLines = sources.map(id => {
+        const label = this.nfa.stateLabels.get(id);
+        return label !== null && label !== undefined ? `q${id}: ${label}` : `q${id}`;
+      });
+      return sourceLines.join('\n');
+    }
+
     const stateLabel = this.nfa.stateLabels.get(stateId);
     if (stateLabel === null || stateLabel === undefined) {
       return `q${stateId}`;
@@ -647,38 +845,54 @@ export class NFAVisualizer {
   /**
    * Highlight all states and edges visited during a trace
    * @param {Array<{states: number[]}>} trace
+   * @param {import('./nfa.js').StateTransformation} [transform] - Optional transformation for mapping states
    */
-  highlightTrace(trace) {
+  highlightTrace(trace, transform = null) {
     if (!this.cy) return;
 
     // Clear previous highlights (selection is independent)
     this.cy.elements().removeClass('highlighted highlighted-final');
 
-    // Track visited states at each step and transitions taken
+    // Helper to get canonical state ID
+    const getCanonical = (stateId) => {
+      if (!transform) return stateId;
+      return transform.remap[stateId];
+    };
+
+    // Track visited canonical states at each step and transitions taken
     const visitedStates = new Set();
     const visitedEdges = new Set();
 
     for (let i = 0; i < trace.length; i++) {
       const step = trace[i];
       for (const stateId of step.states) {
-        visitedStates.add(stateId);
+        const canonical = getCanonical(stateId);
+        if (canonical !== -1) visitedStates.add(canonical);
       }
 
-      // Track edges from previous step to current step
+      // Track edges from previous step to current step (using canonical IDs)
       if (i > 0) {
         const prevStates = trace[i - 1].states;
         for (const fromId of prevStates) {
           for (const toId of step.states) {
-            visitedEdges.add(`${fromId}-${toId}`);
+            const canonicalFrom = getCanonical(fromId);
+            const canonicalTo = getCanonical(toId);
+            if (canonicalFrom !== -1 && canonicalTo !== -1) {
+              visitedEdges.add(`${canonicalFrom}-${canonicalTo}`);
+            }
           }
         }
       }
     }
 
-    // Get final states
-    const finalStates = trace.length > 0
-      ? new Set(trace[trace.length - 1].states)
-      : new Set();
+    // Get final canonical states
+    const finalStates = new Set();
+    if (trace.length > 0) {
+      for (const stateId of trace[trace.length - 1].states) {
+        const canonical = getCanonical(stateId);
+        if (canonical !== -1) finalStates.add(canonical);
+      }
+    }
 
     // Highlight visited states
     for (const stateId of visitedStates) {
@@ -690,9 +904,10 @@ export class NFAVisualizer {
       }
     }
 
-    // Highlight visited edges
+    // Highlight visited edges (both original 'e' prefix and merged 'em' prefix)
     for (const edgeKey of visitedEdges) {
       this.cy.$(`#e${edgeKey}`).addClass('highlighted');
+      this.cy.$(`#em${edgeKey}`).addClass('highlighted');
     }
   }
 

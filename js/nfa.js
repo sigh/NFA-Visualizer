@@ -274,12 +274,12 @@ export class NFA {
 
   /** Get state information for visualization */
   getStateInfo() {
-    const deadStates = this.getDeadStates();
+    const deadTransform = this.getDeadStates();
     return this._transitions.map((_, id) => ({
       id,
       isStart: this.startStates.has(id),
       isAccept: this.acceptStates.has(id),
-      isDead: deadStates.has(id)
+      isDead: deadTransform.isDeleted(id)
     }));
   }
 
@@ -350,24 +350,25 @@ export class NFA {
   /**
    * Find all "dead" states - states from which no accept state is reachable.
    * Uses backward reachability from accept states via the reversed NFA.
+   * @returns {StateTransformation} Transformation that deletes dead states
    */
   getDeadStates() {
     const numStates = this._transitions.length;
-    if (numStates === 0) return new Set();
+    if (numStates === 0) return StateTransformation.identity(0);
 
     // In the reversed NFA, states reachable from start (= original accept)
     // are exactly those that can reach accept in the original
     const canReachAccept = this.reverse().getReachableStates();
 
     // Dead states are those that cannot reach any accept state
-    const deadStates = new Set();
+    const deadStates = [];
     for (let id = 0; id < numStates; id++) {
       if (!canReachAccept.has(id)) {
-        deadStates.add(id);
+        deadStates.push(id);
       }
     }
 
-    return deadStates;
+    return StateTransformation.deletion(numStates, deadStates);
   }
 
   /**

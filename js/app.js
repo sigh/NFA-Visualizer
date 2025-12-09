@@ -7,7 +7,7 @@
  */
 
 import { CodeJar } from '../lib/codejar.min.js';
-import { DEFAULT_SYMBOL_CLASS } from './nfa.js';
+import { DEFAULT_SYMBOL_CLASS, StateTransformation } from './nfa.js';
 import { NFABuilder, parseNFAConfig, buildCodeFromSplit, parseSplitFromCode, expandSymbolClass } from './nfa_builder.js';
 import { NFAVisualizer, compactSymbolLabel } from './visualizer.js';
 
@@ -69,9 +69,8 @@ const elements = {
   statStart: document.getElementById('stat-start'),
   statAccept: document.getElementById('stat-accept'),
   statDead: document.getElementById('stat-dead'),
-  deadStatRow: document.getElementById('dead-stat-row'),
-  hideDeadRow: document.getElementById('hide-dead-row'),
   hideDeadToggle: document.getElementById('hide-dead-toggle'),
+  mergeToggle: document.getElementById('merge-toggle'),
   stateList: document.getElementById('state-list')
 };
 
@@ -80,6 +79,10 @@ const elements = {
 // ============================================
 
 let currentNFA = null;
+let currentTransform = null;  // Combined StateTransformation for visualization
+let currentMergedSources = null;  // Map of canonical state -> source states (cached)
+let hideDeadStates = false;
+let mergeEquivalentStates = false;
 let visualizer = null;
 
 /** CodeJar editor instances */
@@ -163,7 +166,14 @@ function init() {
 
   // Hide dead states toggle
   elements.hideDeadToggle.addEventListener('change', () => {
-    visualizer.setHideDeadStates(elements.hideDeadToggle.checked);
+    hideDeadStates = elements.hideDeadToggle.checked;
+    updateTransformAndRender();
+  });
+
+  // Merge equivalent states toggle
+  elements.mergeToggle.addEventListener('change', () => {
+    mergeEquivalentStates = elements.mergeToggle.checked;
+    updateTransformAndRender();
   });
 
   // Config panel collapse/expand
@@ -319,32 +329,104 @@ function showResults() {
   // Hide empty state message
   elements.emptyState.classList.add('hidden');
 
+  // Reset toggle states
+  hideDeadStates = false;
+  mergeEquivalentStates = false;
+  elements.hideDeadToggle.checked = false;
+  elements.mergeToggle.checked = false;
+
+  // Compute initial transform
+  computeTransform();
+
   // Update stats display
-  const { startStates, acceptStates } = currentNFA;
-  const deadStates = currentNFA.getDeadStates();
-
-  elements.statStates.textContent = currentNFA.numStates();
-  elements.statStart.textContent = startStates.size;
-  elements.statAccept.textContent = acceptStates.size;
-
-  // Show/hide dead state info based on whether there are any
-  if (deadStates.size > 0) {
-    elements.statDead.textContent = deadStates.size;
-    elements.deadStatRow.style.display = '';
-    elements.hideDeadRow.style.display = '';
-  } else {
-    elements.deadStatRow.style.display = 'none';
-    elements.hideDeadRow.style.display = 'none';
-  }
+  updateStatsDisplay();
 
   // Build state list
   updateStateList();
 
   // Render visualization
-  visualizer.render(currentNFA);
+  visualizer.render(currentNFA, currentTransform);
 
   // Run test with current input
   updateTestResult();
+}
+
+/**
+ * Compute the combined transformation based on current toggle states
+ */
+function computeTransform() {
+  if (!currentNFA) {
+    currentTransform = null;
+    return;
+  }
+
+  // Start with identity
+  currentTransform = StateTransformation.identity(currentNFA.numStates());
+
+  // Apply dead state hiding (deletion)
+  if (hideDeadStates) {
+    const deadTransform = currentNFA.getDeadStates();
+    currentTransform = currentTransform.compose(deadTransform);
+  }
+
+  // Apply equivalent state merging
+  if (mergeEquivalentStates) {
+    const mergeTransform = currentNFA.getEquivalentStateRemap(currentTransform);
+    currentTransform = mergeTransform;
+  }
+}
+
+/**
+ * Recompute transform and re-render, preserving viewport and positions
+ */
+function updateTransformAndRender() {
+  if (!currentNFA) return;
+
+  // Save current viewport and positions
+  const viewport = visualizer.getViewport();
+  const positions = visualizer.getNodePositions();
+
+  // Recompute the combined transform
+  computeTransform();
+
+  // Re-render with same positions
+  visualizer.render(currentNFA, currentTransform, positions);
+
+  // Restore viewport
+  visualizer.setViewport(viewport);
+
+  // Update stats display
+  updateStatsDisplay();
+  updateStateList();
+  updateTestResult();
+}
+
+/**
+ * Update the stats display based on current NFA and transform
+ */
+function updateStatsDisplay() {
+  // Count visible states (canonical states in transform)
+  let visibleStates = 0;
+  let visibleStart = 0;
+  let visibleAccept = 0;
+  let visibleDead = 0;
+
+  const deadTransform = currentNFA.getDeadStates();
+
+  for (let i = 0; i < currentTransform.remap.length; i++) {
+    // Only count canonical states (where remap[i] === i)
+    if (currentTransform.remap[i] === i) {
+      visibleStates++;
+      if (currentNFA.startStates.has(i)) visibleStart++;
+      if (currentNFA.acceptStates.has(i)) visibleAccept++;
+      if (deadTransform.isDeleted(i)) visibleDead++;
+    }
+  }
+
+  elements.statStates.textContent = visibleStates;
+  elements.statStart.textContent = visibleStart;
+  elements.statAccept.textContent = visibleAccept;
+  elements.statDead.textContent = visibleDead;
 }
 
 /**
@@ -354,20 +436,40 @@ function updateStateList() {
   const states = currentNFA.getStateInfo();
   const labels = currentNFA.stateLabels;
 
+  // Build map of canonical state -> list of source states (cached for transitions display)
+  currentMergedSources = new Map();
+  for (const state of states) {
+    const canonical = currentTransform.remap[state.id];
+    if (canonical !== -1) {
+      if (!currentMergedSources.has(canonical)) {
+        currentMergedSources.set(canonical, []);
+      }
+      currentMergedSources.get(canonical).push(state.id);
+    }
+  }
+
   // Clear existing items
   elements.stateList.replaceChildren();
 
   for (const state of states) {
+    // Only show canonical states
+    if (currentTransform.remap[state.id] !== state.id) continue;
+
+    const sources = currentMergedSources.get(state.id) || [state.id];
     const label = labels?.get(state.id) || `q${state.id}`;
-    const item = createStateItem(state, label);
+    const item = createStateItem(state, label, sources, currentNFA);
     elements.stateList.appendChild(item);
   }
 }
 
 /**
  * Create a state item DOM element
+ * @param {Object} state - The state object
+ * @param {string} label - The state label (used for non-merged states)
+ * @param {number[]} sources - Array of source state IDs for this state
+ * @param {import('./nfa.js').NFA} nfa - The NFA for looking up labels
  */
-function createStateItem(state, label) {
+function createStateItem(state, label, sources, nfa) {
   const item = document.createElement('div');
   item.className = 'state-item';
   item.dataset.stateId = state.id;
@@ -378,13 +480,33 @@ function createStateItem(state, label) {
 
   const idSpan = document.createElement('span');
   idSpan.className = 'state-id';
-  idSpan.textContent = `q${state.id}`;
+  // Use prime notation for merged states
+  const isMerged = sources.length > 1;
+  idSpan.textContent = isMerged ? `q'${state.id}` : `q${state.id}`;
 
-  const labelSpan = document.createElement('span');
-  labelSpan.className = 'state-label';
-  labelSpan.textContent = label;
+  // For merged states, show all source states with their labels on separate lines
+  if (isMerged) {
+    header.appendChild(idSpan);
+    header.appendChild(document.createTextNode(' = '));
 
-  header.append(idSpan, ' = ', labelSpan);
+    const sourcesList = document.createElement('div');
+    sourcesList.className = 'state-sources-list';
+    for (const id of sources) {
+      const sourceDiv = document.createElement('div');
+      sourceDiv.className = 'state-source-item';
+      const sourceLabel = nfa.stateLabels.get(id);
+      sourceDiv.textContent = sourceLabel !== null && sourceLabel !== undefined
+        ? `q${id}: ${sourceLabel}`
+        : `q${id}`;
+      sourcesList.appendChild(sourceDiv);
+    }
+    header.appendChild(sourcesList);
+  } else {
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'state-label';
+    labelSpan.textContent = label;
+    header.append(idSpan, ' = ', labelSpan);
+  }
 
   // Flags
   const flags = [];
@@ -461,7 +583,10 @@ function expandStateItem(stateId, itemElement) {
     transitionsEl.appendChild(row);
   } else {
     for (const { to, symbols } of transitions) {
-      transitionsEl.appendChild(createTransitionRow(to, symbols));
+      // Use prime notation if target state absorbed multiple states
+      const targetSources = currentMergedSources?.get(to);
+      const isMerged = targetSources && targetSources.length > 1;
+      transitionsEl.appendChild(createTransitionRow(to, symbols, isMerged));
     }
   }
   transitionsEl.classList.remove('hidden');
@@ -469,14 +594,17 @@ function expandStateItem(stateId, itemElement) {
 
 /**
  * Create a transition row DOM element
+ * @param {number} toState - Target state ID
+ * @param {string[]} symbols - Transition symbols
+ * @param {boolean} isMerged - Whether target state is a merged state
  */
-function createTransitionRow(toState, symbols) {
+function createTransitionRow(toState, symbols, isMerged = false) {
   const row = document.createElement('div');
   row.className = 'transition-row';
 
   const stateSpan = document.createElement('span');
   stateSpan.className = 'state-id';
-  stateSpan.textContent = `q${toState}`;
+  stateSpan.textContent = isMerged ? `q'${toState}` : `q${toState}`;
 
   const symbolSpan = document.createElement('span');
   symbolSpan.className = 'symbol-label';
@@ -509,6 +637,7 @@ function hideResults() {
   elements.statStates.textContent = '—';
   elements.statStart.textContent = '—';
   elements.statAccept.textContent = '—';
+  elements.statDead.textContent = '—';
   elements.stateList.innerHTML = '';
 }
 
@@ -537,7 +666,7 @@ function updateTestResult() {
 
     // Update trace highlighting based on toggle
     if (elements.showTraceToggle.checked) {
-      visualizer.highlightTrace(result.trace);
+      visualizer.highlightTrace(result.trace, currentTransform);
     } else {
       visualizer.clearHighlight();
     }
@@ -597,9 +726,12 @@ function displayTestResult(result, sequence) {
   const lastStep = result.trace[result.trace.length - 1];
   const inputDisplay = formatInputSequence(sequence);
 
+  // Count final states, mapping through transform if active
+  const finalStateCount = countCanonicalStates(lastStep.states);
+
   if (result.accepted) {
     showTestResult(
-      `✓ ACCEPTED\nInput: ${inputDisplay}\nFinal states: ${lastStep.states.length}`,
+      `✓ ACCEPTED\nInput: ${inputDisplay}\nFinal states: ${finalStateCount}`,
       true
     );
   } else {
@@ -611,6 +743,19 @@ function displayTestResult(result, sequence) {
       false
     );
   }
+}
+
+/**
+ * Count unique canonical states from a list of state IDs
+ */
+function countCanonicalStates(stateIds) {
+  if (!currentTransform) return stateIds.length;
+  const canonical = new Set();
+  for (const id of stateIds) {
+    const mapped = currentTransform.remap[id];
+    if (mapped !== -1) canonical.add(mapped);
+  }
+  return canonical.size;
 }
 
 /**

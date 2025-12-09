@@ -394,9 +394,9 @@ describe('NFA', () => {
       nfa.addTransition(s0, s2, 0);
 
       const dead = nfa.getDeadStates();
-      assert(dead.has(s2));
-      assert(!dead.has(s0));
-      assert(!dead.has(s1));
+      assert(dead.isDeleted(s2));
+      assert(!dead.isDeleted(s0));
+      assert(!dead.isDeleted(s1));
     });
 
     test('returns empty set when all states can reach accept', () => {
@@ -407,7 +407,7 @@ describe('NFA', () => {
       nfa.addTransition(s0, s1, 0);
 
       const dead = nfa.getDeadStates();
-      assert.strictEqual(dead.size, 0);
+      assert.strictEqual(dead.getDeletedStates().size, 0);
     });
   });
 

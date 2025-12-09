@@ -244,7 +244,7 @@ header {
     font-family: var(--font-mono);
     font-size: var(--font-size-xs);
     color: var(--color-text);
-    white-space: nowrap;
+    white-space: pre-line;
     pointer-events: none;
     z-index: 100;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -369,6 +369,16 @@ header {
 
 .state-flags {
   color: var(--color-text-muted);
+}
+
+.state-sources-list {
+  display: inline-block;
+  margin-left: var(--space-xs);
+}
+
+.state-source-item {
+  color: var(--color-text);
+  padding-left: var(--space-sm);
 }
 
 .state-transitions {
@@ -573,6 +583,26 @@ button {
 
   &:active {
     transform: scale(0.98);
+  }
+}
+
+.secondary-btn {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+
+  &:hover {
+    background: var(--color-border);
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
+
+  &.small-btn {
+    font-size: var(--font-size-xs);
+    padding: var(--space-xs) var(--space-sm);
   }
 }
 
