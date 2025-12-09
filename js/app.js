@@ -25,6 +25,7 @@ const STORAGE_KEYS = {
   startState: 'nfa-start-state',
   transition: 'nfa-transition',
   accept: 'nfa-accept',
+  epsilon: 'nfa-epsilon',
   unified: 'nfa-unified-code',
   unifiedMode: 'nfa-unified-mode',
   testInput: 'nfa-test-input'
@@ -51,6 +52,7 @@ class App {
       startStateInput: document.getElementById('start-state'),
       transitionInput: document.getElementById('transition-fn'),
       acceptInput: document.getElementById('accept-fn'),
+      epsilonInput: document.getElementById('epsilon-fn'),
 
       // Unified mode input
       unifiedCodeInput: document.getElementById('unified-code'),
@@ -95,6 +97,7 @@ class App {
       startState: null,
       transition: null,
       accept: null,
+      epsilon: null,
       unified: null
     };
   }
@@ -120,6 +123,7 @@ class App {
     this.editors.startState = CodeJar(this.elements.startStateInput, (e) => this.highlight(e), { tab: '  ' });
     this.editors.transition = CodeJar(this.elements.transitionInput, (e) => this.highlight(e), { tab: '  ' });
     this.editors.accept = CodeJar(this.elements.acceptInput, (e) => this.highlight(e), { tab: '  ' });
+    this.editors.epsilon = CodeJar(this.elements.epsilonInput, (e) => this.highlight(e), { tab: '  ' });
     this.editors.unified = CodeJar(this.elements.unifiedCodeInput, (e) => this.highlight(e), { tab: '  ' });
 
     // Save on changes
@@ -127,6 +131,7 @@ class App {
     this.editors.startState.onUpdate(() => this.saveToStorage());
     this.editors.transition.onUpdate(() => this.saveToStorage());
     this.editors.accept.onUpdate(() => this.saveToStorage());
+    this.editors.epsilon.onUpdate(() => this.saveToStorage());
     this.editors.unified.onUpdate(() => this.saveToStorage());
 
     // Highlight static code decoration elements
@@ -209,6 +214,7 @@ class App {
     sessionStorage.setItem(STORAGE_KEYS.startState, this.editors.startState.toString());
     sessionStorage.setItem(STORAGE_KEYS.transition, this.editors.transition.toString());
     sessionStorage.setItem(STORAGE_KEYS.accept, this.editors.accept.toString());
+    sessionStorage.setItem(STORAGE_KEYS.epsilon, this.editors.epsilon.toString());
     sessionStorage.setItem(STORAGE_KEYS.unified, this.editors.unified.toString());
     sessionStorage.setItem(STORAGE_KEYS.unifiedMode, this.elements.unifiedToggle.checked);
     sessionStorage.setItem(STORAGE_KEYS.testInput, this.elements.testInput.value);
@@ -222,6 +228,7 @@ class App {
     const startState = sessionStorage.getItem(STORAGE_KEYS.startState);
     const transition = sessionStorage.getItem(STORAGE_KEYS.transition);
     const accept = sessionStorage.getItem(STORAGE_KEYS.accept);
+    const epsilon = sessionStorage.getItem(STORAGE_KEYS.epsilon);
     const unified = sessionStorage.getItem(STORAGE_KEYS.unified);
     const unifiedMode = sessionStorage.getItem(STORAGE_KEYS.unifiedMode);
     const testInput = sessionStorage.getItem(STORAGE_KEYS.testInput);
@@ -230,6 +237,7 @@ class App {
     if (startState !== null) this.editors.startState.updateCode(startState);
     if (transition !== null) this.editors.transition.updateCode(transition);
     if (accept !== null) this.editors.accept.updateCode(accept);
+    if (epsilon !== null) this.editors.epsilon.updateCode(epsilon);
     if (unified !== null) this.editors.unified.updateCode(unified);
     if (testInput !== null) this.elements.testInput.value = testInput;
 
@@ -257,7 +265,8 @@ class App {
       const code = buildCodeFromSplit(
         this.editors.startState.toString() || '"start"',
         this.editors.transition.toString() || 'return undefined;',
-        this.editors.accept.toString() || 'return false;'
+        this.editors.accept.toString() || 'return false;',
+        this.editors.epsilon.toString()
       );
       this.editors.unified.updateCode(code);
 
@@ -269,6 +278,7 @@ class App {
       this.editors.startState.updateCode(parts.startState);
       this.editors.transition.updateCode(parts.transitionBody);
       this.editors.accept.updateCode(parts.acceptBody);
+      this.editors.epsilon.updateCode(parts.epsilonBody);
 
       this.elements.unifiedInput.classList.add('hidden');
       this.elements.splitInput.classList.remove('hidden');
@@ -324,7 +334,8 @@ class App {
     return buildCodeFromSplit(
       this.editors.startState.toString() || '"start"',
       this.editors.transition.toString() || 'return undefined;',
-      this.editors.accept.toString() || 'return false;'
+      this.editors.accept.toString() || 'return false;',
+      this.editors.epsilon.toString()
     );
   }
 

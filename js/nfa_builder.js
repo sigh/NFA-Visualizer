@@ -48,6 +48,7 @@ export class NFABuilder {
    * @param {any} config.startState - Initial state value (or array for multiple)
    * @param {Function} config.transition - (state, symbol) => nextState(s)
    * @param {Function} config.accept - (state) => boolean
+   * @param {Function} [config.epsilon] - (state) => nextState(s) for epsilon transitions
    * @param {Object} options - Builder options
    * @param {number} options.maxStates - Maximum states before error
    * @param {Array} options.symbols - Array of symbols to explore
@@ -56,6 +57,7 @@ export class NFABuilder {
     this.startState = config.startState;
     this.transitionFn = config.transition;
     this.acceptFn = config.accept;
+    this.epsilonFn = config.epsilon || null;
     this.maxStates = options.maxStates || DEFAULT_MAX_STATES;
     this.symbols = options.symbols || expandSymbolClass(DEFAULT_SYMBOL_CLASS);
   }
@@ -75,6 +77,39 @@ export class NFABuilder {
     // Wrap user functions to provide better error messages
     const wrappedAccept = this._wrapAcceptFn(this.acceptFn);
     const wrappedTransition = this._wrapTransitionFn(this.transitionFn);
+    const wrappedEpsilon = this.epsilonFn ? this._wrapEpsilonFn(this.epsilonFn) : null;
+
+    // Cache epsilon targets (stateStr -> string[])
+    // Ensures user epsilon function is called at most once per state
+    const epsilonTargetsCache = new Map();
+    const getEpsilonTargets = (stateStr) => {
+      if (!wrappedEpsilon) return [];
+      if (epsilonTargetsCache.has(stateStr)) return epsilonTargetsCache.get(stateStr);
+      const targets = wrappedEpsilon(stateStr);
+      epsilonTargetsCache.set(stateStr, targets);
+      return targets;
+    };
+
+    // Cache epsilon closures (stateStr -> Set<stateStr>)
+    const epsilonClosureCache = new Map();
+    const getEpsilonClosure = (stateStr) => {
+      if (!wrappedEpsilon) return new Set([stateStr]);
+      if (epsilonClosureCache.has(stateStr)) return epsilonClosureCache.get(stateStr);
+
+      const closure = new Set([stateStr]);
+      const stack = [stateStr];
+      while (stack.length > 0) {
+        const current = stack.pop();
+        for (const target of getEpsilonTargets(current)) {
+          if (!closure.has(target)) {
+            closure.add(target);
+            stack.push(target);
+          }
+        }
+      }
+      epsilonClosureCache.set(stateStr, closure);
+      return closure;
+    };
 
     /**
      * Add a state to the NFA, returning existing ID if already added
@@ -92,7 +127,6 @@ export class NFABuilder {
       stateStrToId.set(stateStr, id);
       idToStateStr.set(id, stateStr);
 
-      // Check if this state is accepting
       if (wrappedAccept(stateStr)) {
         nfa.setAccept(id);
       }
@@ -134,6 +168,48 @@ export class NFABuilder {
 
           if (!visited.has(nextId)) {
             queue.push(nextId);
+          }
+        }
+      }
+
+      // Explore epsilon transitions
+      for (const closureState of getEpsilonTargets(stateStr)) {
+        const closureId = addState(closureState);
+        if (!visited.has(closureId)) {
+          queue.push(closureId);
+        }
+      }
+    }
+
+    // Apply epsilon closure transformations to NFA structure
+    if (wrappedEpsilon) {
+      // Expand start states to include epsilon closures
+      for (const startId of [...nfa.startStates]) {
+        const stateStr = idToStateStr.get(startId);
+        for (const closureState of getEpsilonClosure(stateStr)) {
+          nfa.setStart(stateStrToId.get(closureState));
+        }
+      }
+
+      // Add transitions to epsilon closure states
+      const numStates = nfa.numStates();
+      for (let fromId = 0; fromId < numStates; fromId++) {
+        for (let symbolIndex = 0; symbolIndex < this.symbols.length; symbolIndex++) {
+          for (const toId of nfa.getTransitions(fromId, symbolIndex)) {
+            const toStateStr = idToStateStr.get(toId);
+            for (const closureState of getEpsilonClosure(toStateStr)) {
+              nfa.addTransition(fromId, stateStrToId.get(closureState), symbolIndex);
+            }
+          }
+        }
+      }
+
+      // Propagate accept status through epsilon closures
+      for (const [stateStr, id] of stateStrToId) {
+        for (const closureState of getEpsilonClosure(stateStr)) {
+          if (nfa.acceptStates.has(stateStrToId.get(closureState))) {
+            nfa.setAccept(id);
+            break;
           }
         }
       }
@@ -180,6 +256,26 @@ export class NFABuilder {
       } catch (err) {
         throw new Error(
           `Accept function threw for ${stateStr}: ${err?.message || err}`);
+      }
+    };
+  }
+
+  /**
+   * Wrap the epsilon function to handle errors and normalize output
+   * @private
+   */
+  _wrapEpsilonFn(fn) {
+    return (stateStr) => {
+      const stateValue = this._deserializeState(stateStr);
+      try {
+        const result = fn(stateValue);
+        const nextStates = this._normalizeToArray(result);
+        return nextStates
+          .filter(s => s !== undefined)
+          .map(s => this._serializeState(s));
+      } catch (err) {
+        throw new Error(
+          `Epsilon function threw for ${stateStr}: ${err?.message || err}`);
       }
     };
   }
@@ -254,18 +350,19 @@ export function expandSymbolClass(charClass) {
  * - startState: initial state value
  * - transition(state, symbol): returns next state(s)
  * - accept(state): returns true if accepting
+ * - epsilon(state): (optional) returns epsilon-reachable state(s)
  *
  * @param {string} code - User's JavaScript code
- * @returns {{startState: any, transition: Function, accept: Function}}
+ * @returns {{startState: any, transition: Function, accept: Function, epsilon?: Function}}
  * @throws {Error} If code is invalid or missing required definitions
  */
 export function parseNFAConfig(code) {
   // Wrap code in IIFE to isolate scope and prevent global pollution
   const wrappedCode = `
     return (function() {
-      var startState, transition, accept;
+      var startState, transition, accept, epsilon;
       ${code}
-      return { startState, transition, accept };
+      return { startState, transition, accept, epsilon };
     })();
   `;
 
@@ -283,6 +380,10 @@ export function parseNFAConfig(code) {
     if (typeof result.accept !== 'function') {
       throw new Error('accept must be a function');
     }
+    // epsilon is optional, but must be a function if defined
+    if (result.epsilon !== undefined && typeof result.epsilon !== 'function') {
+      throw new Error('epsilon must be a function');
+    }
 
     return result;
   } catch (e) {
@@ -296,9 +397,10 @@ export function parseNFAConfig(code) {
  * @param {string} startStateCode - The startState expression
  * @param {string} transitionBody - Body of the transition function
  * @param {string} acceptBody - Body of the accept function
+ * @param {string} [epsilonBody] - Body of the epsilon function (optional)
  * @returns {string} Complete code string
  */
-export function buildCodeFromSplit(startStateCode, transitionBody, acceptBody) {
+export function buildCodeFromSplit(startStateCode, transitionBody, acceptBody, epsilonBody) {
   const indentedTransition = transitionBody
     .split('\n')
     .map(line => '  ' + line)
@@ -309,7 +411,7 @@ export function buildCodeFromSplit(startStateCode, transitionBody, acceptBody) {
     .map(line => '  ' + line)
     .join('\n');
 
-  return `startState = ${startStateCode};
+  let code = `startState = ${startStateCode};
 
 function transition(state, symbol) {
 ${indentedTransition}
@@ -318,6 +420,22 @@ ${indentedTransition}
 function accept(state) {
 ${indentedAccept}
 }`;
+
+  // Only include epsilon if body is non-empty
+  if (epsilonBody && epsilonBody.trim()) {
+    const indentedEpsilon = epsilonBody
+      .split('\n')
+      .map(line => '  ' + line)
+      .join('\n');
+
+    code += `
+
+function epsilon(state) {
+${indentedEpsilon}
+}`;
+  }
+
+  return code;
 }
 
 /**
@@ -329,24 +447,35 @@ ${indentedAccept}
  * 3. Serialize startState back to code
  *
  * @param {string} code - Unified code string
- * @returns {{startState: string, transitionBody: string, acceptBody: string}}
+ * @returns {{startState: string, transitionBody: string, acceptBody: string, epsilonBody: string}}
  */
 export function parseSplitFromCode(code) {
   try {
     // Execute the code to get the actual objects
-    const parsed = new Function(`${code}; return { startState, transition, accept };`)();
+    // epsilon is optional, so check if it's defined after execution
+    const parsed = new Function(`
+      ${code};
+      return {
+        startState,
+        transition,
+        accept,
+        epsilon: typeof epsilon !== 'undefined' ? epsilon : undefined
+      };
+    `)();
 
     return {
       startState: JSON.stringify(parsed.startState),
       transitionBody: extractFunctionBody(parsed.transition),
-      acceptBody: extractFunctionBody(parsed.accept)
+      acceptBody: extractFunctionBody(parsed.accept),
+      epsilonBody: parsed.epsilon ? extractFunctionBody(parsed.epsilon) : ''
     };
   } catch {
     // Fallback to empty if code is invalid
     return {
       startState: '',
       transitionBody: '',
-      acceptBody: ''
+      acceptBody: '',
+      epsilonBody: ''
     };
   }
 }

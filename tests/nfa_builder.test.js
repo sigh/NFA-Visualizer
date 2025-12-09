@@ -172,6 +172,24 @@ describe('buildCodeFromSplit', () => {
     const config = parseNFAConfig(code);
     assert.strictEqual(config.startState, 42);
   });
+
+  test('includes epsilon function when provided', () => {
+    const code = buildCodeFromSplit('0', 'return state + 1;', 'return false;', 'return state === 0 ? 1 : undefined;');
+    assert(code.includes('function epsilon(state)'));
+    assert(code.includes('return state === 0 ? 1 : undefined;'));
+    const config = parseNFAConfig(code);
+    assert.strictEqual(typeof config.epsilon, 'function');
+  });
+
+  test('omits epsilon function when body is empty', () => {
+    const code = buildCodeFromSplit('0', 'return state;', 'return false;', '');
+    assert(!code.includes('function epsilon'));
+  });
+
+  test('omits epsilon function when body is whitespace only', () => {
+    const code = buildCodeFromSplit('0', 'return state;', 'return false;', '   ');
+    assert(!code.includes('function epsilon'));
+  });
 });
 
 // =============================================================================
@@ -211,6 +229,7 @@ describe('parseSplitFromCode', () => {
     assert.strictEqual(split.startState, '');
     assert.strictEqual(split.transitionBody, '');
     assert.strictEqual(split.acceptBody, '');
+    assert.strictEqual(split.epsilonBody, '');
   });
 
   test('round-trips with buildCodeFromSplit', () => {
@@ -222,6 +241,38 @@ describe('parseSplitFromCode', () => {
     const config1 = parseNFAConfig(original);
     const config2 = parseNFAConfig(rebuilt);
     assert.strictEqual(config1.startState, config2.startState);
+  });
+
+  test('extracts epsilon function when present', () => {
+    const code = `
+      startState = 0;
+      function transition(state, symbol) { return state + 1; }
+      function accept(state) { return state > 5; }
+      function epsilon(state) { return state === 0 ? 1 : undefined; }
+    `;
+    const split = parseSplitFromCode(code);
+    assert(split.epsilonBody.includes('return state === 0 ? 1 : undefined'));
+  });
+
+  test('returns empty epsilonBody when epsilon not present', () => {
+    const code = `
+      startState = 0;
+      function transition(state, symbol) { return state; }
+      function accept(state) { return false; }
+    `;
+    const split = parseSplitFromCode(code);
+    assert.strictEqual(split.epsilonBody, '');
+  });
+
+  test('round-trips with epsilon', () => {
+    const original = buildCodeFromSplit('0', 'return state + 1;', 'return false;', 'return state === 0 ? 1 : undefined;');
+    const split = parseSplitFromCode(original);
+    const rebuilt = buildCodeFromSplit(split.startState, split.transitionBody, split.acceptBody, split.epsilonBody);
+
+    const config1 = parseNFAConfig(original);
+    const config2 = parseNFAConfig(rebuilt);
+    assert.strictEqual(typeof config1.epsilon, 'function');
+    assert.strictEqual(typeof config2.epsilon, 'function');
   });
 });
 
@@ -432,4 +483,312 @@ describe('Integration', () => {
   });
 });
 
+// =============================================================================
+// Epsilon Transition Tests
+// =============================================================================
 
+describe('epsilon transitions', () => {
+  test('parseNFAConfig accepts optional epsilon function', () => {
+    const code = `
+      startState = 0;
+      function transition(state, symbol) { return state + 1; }
+      function accept(state) { return state > 5; }
+      function epsilon(state) { return state === 0 ? 1 : undefined; }
+    `;
+    const config = parseNFAConfig(code);
+    assert.strictEqual(typeof config.epsilon, 'function');
+  });
+
+  test('parseNFAConfig works without epsilon function', () => {
+    const code = `
+      startState = 0;
+      function transition(state, symbol) { return state + 1; }
+      function accept(state) { return state > 5; }
+    `;
+    const config = parseNFAConfig(code);
+    assert.strictEqual(config.epsilon, undefined);
+  });
+
+  test('parseNFAConfig throws if epsilon is not a function', () => {
+    const code = `
+      startState = 0;
+      function transition(state, symbol) { return state + 1; }
+      function accept(state) { return state > 5; }
+      epsilon = 42;
+    `;
+    assert.throws(() => parseNFAConfig(code), /epsilon must be a function/);
+  });
+
+  test('epsilon closure expands start states', () => {
+    // Start at 0, epsilon to 1
+    const config = {
+      startState: 0,
+      transition: (state, symbol) => undefined,
+      accept: (state) => state === 1,
+      epsilon: (state) => state === 0 ? 1 : undefined
+    };
+
+    const builder = new NFABuilder(config, { symbols: ['a'] });
+    const nfa = builder.build();
+
+    // Both 0 and 1 should be start states due to epsilon closure
+    assert.strictEqual(nfa.startStates.size, 2);
+    assert(nfa.startStates.has(0));
+    assert(nfa.startStates.has(1));
+
+    // Empty string should be accepted (start includes epsilon-reachable accept state)
+    const result = nfa.run([]);
+    assert(result.accepted);
+  });
+
+  test('epsilon closure expands transitions', () => {
+    // 0 --a--> 1 --ε--> 2
+    const config = {
+      startState: 0,
+      transition: (state, symbol) => state === 0 && symbol === 'a' ? 1 : undefined,
+      accept: (state) => state === 2,
+      epsilon: (state) => state === 1 ? 2 : undefined
+    };
+
+    const builder = new NFABuilder(config, { symbols: ['a'] });
+    const nfa = builder.build();
+
+    // 'a' should reach both 1 and 2 (via epsilon)
+    const result = nfa.run([['a']]);
+    assert(result.accepted);
+  });
+
+  test('epsilon closure is transitive', () => {
+    // 0 --ε--> 1 --ε--> 2 --ε--> 3
+    const config = {
+      startState: 0,
+      transition: (state, symbol) => undefined,
+      accept: (state) => state === 3,
+      epsilon: (state) => {
+        if (state === 0) return 1;
+        if (state === 1) return 2;
+        if (state === 2) return 3;
+        return undefined;
+      }
+    };
+
+    const builder = new NFABuilder(config, { symbols: ['a'] });
+    const nfa = builder.build();
+
+    // All 4 states should be start states
+    assert.strictEqual(nfa.startStates.size, 4);
+
+    // Empty string should be accepted
+    const result = nfa.run([]);
+    assert(result.accepted);
+  });
+
+  test('epsilon to accepting state makes source accepting', () => {
+    // State 0 has epsilon to state 1 which is accepting
+    const config = {
+      startState: 0,
+      transition: (state, symbol) => undefined,
+      accept: (state) => state === 1,
+      epsilon: (state) => state === 0 ? 1 : undefined
+    };
+
+    const builder = new NFABuilder(config, { symbols: ['a'] });
+    const nfa = builder.build();
+
+    // State 0 should be marked as accepting (can reach accept via epsilon)
+    assert(nfa.acceptStates.has(0));
+    assert(nfa.acceptStates.has(1));
+  });
+
+  test('epsilon returns array of states', () => {
+    // 0 --ε--> [1, 2]
+    const config = {
+      startState: 0,
+      transition: (state, symbol) => undefined,
+      accept: (state) => state === 2,
+      epsilon: (state) => state === 0 ? [1, 2] : undefined
+    };
+
+    const builder = new NFABuilder(config, { symbols: ['a'] });
+    const nfa = builder.build();
+
+    assert.strictEqual(nfa.startStates.size, 3);
+    assert(nfa.acceptStates.has(0)); // Can reach 2 via epsilon
+  });
+
+  test('no epsilon function means no epsilon transitions', () => {
+    const config = {
+      startState: 0,
+      transition: (state, symbol) => state === 0 ? 1 : undefined,
+      accept: (state) => state === 1
+    };
+
+    const builder = new NFABuilder(config, { symbols: ['a'] });
+    const nfa = builder.build();
+
+    assert.strictEqual(nfa.startStates.size, 1);
+    assert(!nfa.acceptStates.has(0));
+  });
+
+  test('transitions from epsilon target states are explored', () => {
+    // 0 --ε--> 1 --a--> 2
+    // Without proper exploration, state 2 would never be discovered
+    const config = {
+      startState: 0,
+      transition: (state, symbol) => {
+        if (state === 1 && symbol === 'a') return 2;
+        return undefined;
+      },
+      accept: (state) => state === 2,
+      epsilon: (state) => state === 0 ? 1 : undefined
+    };
+
+    const builder = new NFABuilder(config, { symbols: ['a'] });
+    const nfa = builder.build();
+
+    // State 2 must exist (discovered via epsilon -> transition)
+    assert.strictEqual(nfa.numStates(), 3);
+
+    // 'a' from start should reach state 2
+    const result = nfa.run([['a']]);
+    assert(result.accepted);
+  });
+
+  test('chained epsilon then transition is explored', () => {
+    // 0 --ε--> 1 --ε--> 2 --a--> 3
+    const config = {
+      startState: 0,
+      transition: (state, symbol) => {
+        if (state === 2 && symbol === 'a') return 3;
+        return undefined;
+      },
+      accept: (state) => state === 3,
+      epsilon: (state) => {
+        if (state === 0) return 1;
+        if (state === 1) return 2;
+        return undefined;
+      }
+    };
+
+    const builder = new NFABuilder(config, { symbols: ['a'] });
+    const nfa = builder.build();
+
+    assert.strictEqual(nfa.numStates(), 4);
+
+    const result = nfa.run([['a']]);
+    assert(result.accepted);
+  });
+});
+
+// =============================================================================
+// User Function Call Count Tests
+// =============================================================================
+
+describe('user function call counts', () => {
+  test('transition called once per (state, symbol) pair', () => {
+    const calls = new Map(); // "state,symbol" -> count
+
+    const config = {
+      startState: 0,
+      transition: (state, symbol) => {
+        const key = `${state},${symbol}`;
+        calls.set(key, (calls.get(key) || 0) + 1);
+        return state < 2 ? state + 1 : undefined;
+      },
+      accept: (state) => state === 2
+    };
+
+    const builder = new NFABuilder(config, { symbols: ['a', 'b'] });
+    builder.build();
+
+    // Each (state, symbol) pair should be called exactly once
+    for (const [key, count] of calls) {
+      assert.strictEqual(count, 1, `transition called ${count} times for ${key}`);
+    }
+  });
+
+  test('accept called once per state', () => {
+    const calls = new Map(); // state -> count
+
+    const config = {
+      startState: 0,
+      transition: (state, symbol) => state < 3 ? state + 1 : undefined,
+      accept: (state) => {
+        calls.set(state, (calls.get(state) || 0) + 1);
+        return state === 3;
+      }
+    };
+
+    const builder = new NFABuilder(config, { symbols: ['a'] });
+    builder.build();
+
+    // Each state should have accept called exactly once
+    for (const [state, count] of calls) {
+      assert.strictEqual(count, 1, `accept called ${count} times for state ${state}`);
+    }
+  });
+
+  test('epsilon called once per state', () => {
+    const calls = new Map(); // state -> count
+
+    const config = {
+      startState: 0,
+      transition: (state, symbol) => undefined,
+      accept: (state) => state === 2,
+      epsilon: (state) => {
+        calls.set(state, (calls.get(state) || 0) + 1);
+        if (state === 0) return 1;
+        if (state === 1) return 2;
+        return undefined;
+      }
+    };
+
+    const builder = new NFABuilder(config, { symbols: ['a'] });
+    builder.build();
+
+    // Each state should have epsilon called exactly once
+    for (const [state, count] of calls) {
+      assert.strictEqual(count, 1, `epsilon called ${count} times for state ${state}`);
+    }
+  });
+
+  test('functions called correct number of times with complex NFA', () => {
+    const transitionCalls = new Map();
+    const acceptCalls = new Map();
+    const epsilonCalls = new Map();
+
+    // NFA: 0 --a--> 1 --ε--> 2 --b--> 3
+    const config = {
+      startState: 0,
+      transition: (state, symbol) => {
+        const key = `${state},${symbol}`;
+        transitionCalls.set(key, (transitionCalls.get(key) || 0) + 1);
+        if (state === 0 && symbol === 'a') return 1;
+        if (state === 2 && symbol === 'b') return 3;
+        return undefined;
+      },
+      accept: (state) => {
+        acceptCalls.set(state, (acceptCalls.get(state) || 0) + 1);
+        return state === 3;
+      },
+      epsilon: (state) => {
+        epsilonCalls.set(state, (epsilonCalls.get(state) || 0) + 1);
+        return state === 1 ? 2 : undefined;
+      }
+    };
+
+    const builder = new NFABuilder(config, { symbols: ['a', 'b'] });
+    builder.build();
+
+    // Verify each function called at most once per input
+    for (const [key, count] of transitionCalls) {
+      assert.strictEqual(count, 1, `transition called ${count} times for ${key}`);
+    }
+    for (const [state, count] of acceptCalls) {
+      assert.strictEqual(count, 1, `accept called ${count} times for state ${state}`);
+    }
+    for (const [state, count] of epsilonCalls) {
+      assert.strictEqual(count, 1, `epsilon called ${count} times for state ${state}`);
+    }
+  });
+});
