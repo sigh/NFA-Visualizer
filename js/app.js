@@ -31,756 +31,764 @@ const STORAGE_KEYS = {
 };
 
 // ============================================
-// DOM Element References
-// ============================================
-
-const elements = {
-  // Input mode controls
-  unifiedToggle: document.getElementById('unified-toggle'),
-  splitInput: document.getElementById('split-input'),
-  unifiedInput: document.getElementById('unified-input'),
-
-  // Split mode inputs (now divs for CodeJar)
-  symbolsInput: document.getElementById('symbols-input'),
-  startStateInput: document.getElementById('start-state'),
-  transitionInput: document.getElementById('transition-fn'),
-  acceptInput: document.getElementById('accept-fn'),
-
-  // Unified mode input
-  unifiedCodeInput: document.getElementById('unified-code'),
-
-  // Actions
-  buildBtn: document.getElementById('build-btn'),
-
-  // Output
-  errorDisplay: document.getElementById('error-display'),
-  testInput: document.getElementById('test-input'),
-  showTraceToggle: document.getElementById('show-trace-toggle'),
-  testResult: document.getElementById('test-result'),
-  cyContainer: document.getElementById('cy-container'),
-  emptyState: document.getElementById('empty-state'),
-
-  // Panel controls
-  appLayout: document.querySelector('.app-layout'),
-  configToggleBtn: document.getElementById('config-toggle-btn'),
-
-  // Stats
-  statStates: document.getElementById('stat-states'),
-  statStart: document.getElementById('stat-start'),
-  statAccept: document.getElementById('stat-accept'),
-  statDead: document.getElementById('stat-dead'),
-  hideDeadToggle: document.getElementById('hide-dead-toggle'),
-  mergeToggle: document.getElementById('merge-toggle'),
-  stateList: document.getElementById('state-list')
-};
-
-// ============================================
-// Application State
-// ============================================
-
-let currentNFA = null;
-let currentTransform = null;  // Combined StateTransformation for visualization
-let currentMergedSources = null;  // Map of canonical state -> source states (cached)
-let hideDeadStates = false;
-let mergeEquivalentStates = false;
-let visualizer = null;
-
-/** CodeJar editor instances */
-const editors = {
-  startState: null,
-  transition: null,
-  accept: null,
-  unified: null
-};
-
-// ============================================
-// CodeJar Setup
+// Application Class
 // ============================================
 
 /**
- * Syntax highlighter using PrismJS
+ * Main application controller - encapsulates all state
  */
-function highlight(editor) {
-  const code = editor.textContent;
-  editor.innerHTML = Prism.highlight(code, Prism.languages.javascript, 'javascript');
-}
+class App {
+  constructor() {
+    // DOM element references
+    this.elements = {
+      // Input mode controls
+      unifiedToggle: document.getElementById('unified-toggle'),
+      splitInput: document.getElementById('split-input'),
+      unifiedInput: document.getElementById('unified-input'),
 
-/**
- * Initialize CodeJar editors
- */
-function initEditors() {
-  // All editors use syntax highlighting (except symbols which uses plain text)
-  editors.symbols = CodeJar(elements.symbolsInput, () => { }, { tab: '  ' });
-  editors.startState = CodeJar(elements.startStateInput, highlight, { tab: '  ' });
-  editors.transition = CodeJar(elements.transitionInput, highlight, { tab: '  ' });
-  editors.accept = CodeJar(elements.acceptInput, highlight, { tab: '  ' });
-  editors.unified = CodeJar(elements.unifiedCodeInput, highlight, { tab: '  ' });
+      // Split mode inputs (now divs for CodeJar)
+      symbolsInput: document.getElementById('symbols-input'),
+      startStateInput: document.getElementById('start-state'),
+      transitionInput: document.getElementById('transition-fn'),
+      acceptInput: document.getElementById('accept-fn'),
 
-  // Save on changes
-  editors.symbols.onUpdate(saveToStorage);
-  editors.startState.onUpdate(saveToStorage);
-  editors.transition.onUpdate(saveToStorage);
-  editors.accept.onUpdate(saveToStorage);
-  editors.unified.onUpdate(saveToStorage);
+      // Unified mode input
+      unifiedCodeInput: document.getElementById('unified-code'),
 
-  // Highlight static code decoration elements
-  document.querySelectorAll('.code-decoration').forEach(el => {
-    Prism.highlightElement(el);
-  });
-}
+      // Actions
+      buildBtn: document.getElementById('build-btn'),
 
-// ============================================
-// Initialization
-// ============================================
+      // Output
+      errorDisplay: document.getElementById('error-display'),
+      testInput: document.getElementById('test-input'),
+      showTraceToggle: document.getElementById('show-trace-toggle'),
+      testResult: document.getElementById('test-result'),
+      cyContainer: document.getElementById('cy-container'),
+      emptyState: document.getElementById('empty-state'),
 
-/**
- * Initialize the application: set up event listeners and visualizer
- */
-function init() {
-  // Initialize CodeJar editors
-  initEditors();
+      // Panel controls
+      appLayout: document.querySelector('.app-layout'),
+      configToggleBtn: document.getElementById('config-toggle-btn'),
 
-  // Restore saved inputs from sessionStorage
-  restoreFromStorage();
+      // Stats
+      statStates: document.getElementById('stat-states'),
+      statStart: document.getElementById('stat-start'),
+      statAccept: document.getElementById('stat-accept'),
+      statDead: document.getElementById('stat-dead'),
+      hideDeadToggle: document.getElementById('hide-dead-toggle'),
+      mergeToggle: document.getElementById('merge-toggle'),
+      stateList: document.getElementById('state-list')
+    };
 
-  // Set up event listeners
-  elements.unifiedToggle.addEventListener('change', handleModeToggle);
-  elements.buildBtn.addEventListener('click', handleBuild);
+    // Application state
+    this.currentNFA = null;
+    this.currentTransform = null;
+    this.currentMergedSources = null;
+    this.hideDeadStates = false;
+    this.mergeEquivalentStates = false;
+    this.visualizer = null;
 
-  // Auto-update test on input change
-  elements.testInput.addEventListener('input', () => {
-    saveToStorage();
-    updateTestResult();
-  });
-
-  // Show/hide trace toggle
-  elements.showTraceToggle.addEventListener('change', updateTestResult);
-
-  // Initialize visualizer
-  visualizer = new NFAVisualizer(elements.cyContainer);
-
-  // Handle state selection from graph
-  visualizer.onStateSelect = (stateId) => {
-    updateStateListSelection(stateId);
-  };
-
-  // Hide dead states toggle
-  elements.hideDeadToggle.addEventListener('change', () => {
-    hideDeadStates = elements.hideDeadToggle.checked;
-    updateTransformAndRender();
-  });
-
-  // Merge equivalent states toggle
-  elements.mergeToggle.addEventListener('change', () => {
-    mergeEquivalentStates = elements.mergeToggle.checked;
-    updateTransformAndRender();
-  });
-
-  // Config panel collapse/expand
-  elements.configToggleBtn.addEventListener('click', () => {
-    elements.appLayout.classList.toggle('config-collapsed');
-    visualizer?.fit();
-  });
-
-  // Refit visualization on window resize
-  window.addEventListener('resize', () => {
-    visualizer?.fit();
-  });
-
-  // Build NFA on startup
-  handleBuild();
-}
-
-// ============================================
-// Session Storage
-// ============================================
-
-/**
- * Save current input values to sessionStorage
- */
-function saveToStorage() {
-  sessionStorage.setItem(STORAGE_KEYS.symbols, editors.symbols.toString());
-  sessionStorage.setItem(STORAGE_KEYS.startState, editors.startState.toString());
-  sessionStorage.setItem(STORAGE_KEYS.transition, editors.transition.toString());
-  sessionStorage.setItem(STORAGE_KEYS.accept, editors.accept.toString());
-  sessionStorage.setItem(STORAGE_KEYS.unified, editors.unified.toString());
-  sessionStorage.setItem(STORAGE_KEYS.unifiedMode, elements.unifiedToggle.checked);
-  sessionStorage.setItem(STORAGE_KEYS.testInput, elements.testInput.value);
-}
-
-/**
- * Restore input values from sessionStorage
- */
-function restoreFromStorage() {
-  const symbols = sessionStorage.getItem(STORAGE_KEYS.symbols);
-  const startState = sessionStorage.getItem(STORAGE_KEYS.startState);
-  const transition = sessionStorage.getItem(STORAGE_KEYS.transition);
-  const accept = sessionStorage.getItem(STORAGE_KEYS.accept);
-  const unified = sessionStorage.getItem(STORAGE_KEYS.unified);
-  const unifiedMode = sessionStorage.getItem(STORAGE_KEYS.unifiedMode);
-  const testInput = sessionStorage.getItem(STORAGE_KEYS.testInput);
-
-  if (symbols !== null) editors.symbols.updateCode(symbols);
-  if (startState !== null) editors.startState.updateCode(startState);
-  if (transition !== null) editors.transition.updateCode(transition);
-  if (accept !== null) editors.accept.updateCode(accept);
-  if (unified !== null) editors.unified.updateCode(unified);
-  if (testInput !== null) elements.testInput.value = testInput;
-
-  // Restore mode toggle state
-  if (unifiedMode === 'true') {
-    elements.unifiedToggle.checked = true;
-    elements.splitInput.classList.add('hidden');
-    elements.unifiedInput.classList.remove('hidden');
+    // CodeJar editor instances
+    this.editors = {
+      symbols: null,
+      startState: null,
+      transition: null,
+      accept: null,
+      unified: null
+    };
   }
-}
 
-// ============================================
-// Mode Toggle Handler
-// ============================================
+  // ============================================
+  // CodeJar Setup
+  // ============================================
 
-/**
- * Toggle between split and unified input modes,
- * converting code between formats.
- */
-function handleModeToggle() {
-  const isUnified = elements.unifiedToggle.checked;
+  /**
+   * Syntax highlighter using PrismJS
+   */
+  highlight(editor) {
+    const code = editor.textContent;
+    editor.innerHTML = Prism.highlight(code, Prism.languages.javascript, 'javascript');
+  }
 
-  if (isUnified) {
-    // Convert split inputs to unified code
-    const code = buildCodeFromSplit(
-      editors.startState.toString() || '"start"',
-      editors.transition.toString() || 'return undefined;',
-      editors.accept.toString() || 'return false;'
+  /**
+   * Initialize CodeJar editors
+   */
+  initEditors() {
+    // All editors use syntax highlighting (except symbols which uses plain text)
+    this.editors.symbols = CodeJar(this.elements.symbolsInput, () => { }, { tab: '  ' });
+    this.editors.startState = CodeJar(this.elements.startStateInput, (e) => this.highlight(e), { tab: '  ' });
+    this.editors.transition = CodeJar(this.elements.transitionInput, (e) => this.highlight(e), { tab: '  ' });
+    this.editors.accept = CodeJar(this.elements.acceptInput, (e) => this.highlight(e), { tab: '  ' });
+    this.editors.unified = CodeJar(this.elements.unifiedCodeInput, (e) => this.highlight(e), { tab: '  ' });
+
+    // Save on changes
+    this.editors.symbols.onUpdate(() => this.saveToStorage());
+    this.editors.startState.onUpdate(() => this.saveToStorage());
+    this.editors.transition.onUpdate(() => this.saveToStorage());
+    this.editors.accept.onUpdate(() => this.saveToStorage());
+    this.editors.unified.onUpdate(() => this.saveToStorage());
+
+    // Highlight static code decoration elements
+    document.querySelectorAll('.code-decoration').forEach(el => {
+      Prism.highlightElement(el);
+    });
+  }
+
+  // ============================================
+  // Initialization
+  // ============================================
+
+  /**
+   * Initialize the application: set up event listeners and visualizer
+   */
+  init() {
+    // Initialize CodeJar editors
+    this.initEditors();
+
+    // Restore saved inputs from sessionStorage
+    this.restoreFromStorage();
+
+    // Set up event listeners
+    this.elements.unifiedToggle.addEventListener('change', () => this.handleModeToggle());
+    this.elements.buildBtn.addEventListener('click', () => this.handleBuild());
+
+    // Auto-update test on input change
+    this.elements.testInput.addEventListener('input', () => {
+      this.saveToStorage();
+      this.updateTestResult();
+    });
+
+    // Show/hide trace toggle
+    this.elements.showTraceToggle.addEventListener('change', () => this.updateTestResult());
+
+    // Initialize visualizer
+    this.visualizer = new NFAVisualizer(this.elements.cyContainer);
+
+    // Handle state selection from graph
+    this.visualizer.onStateSelect = (stateId) => {
+      this.updateStateListSelection(stateId);
+    };
+
+    // Hide dead states toggle
+    this.elements.hideDeadToggle.addEventListener('change', () => {
+      this.hideDeadStates = this.elements.hideDeadToggle.checked;
+      this.updateTransformAndRender();
+    });
+
+    // Merge equivalent states toggle
+    this.elements.mergeToggle.addEventListener('change', () => {
+      this.mergeEquivalentStates = this.elements.mergeToggle.checked;
+      this.updateTransformAndRender();
+    });
+
+    // Config panel collapse/expand
+    this.elements.configToggleBtn.addEventListener('click', () => {
+      this.elements.appLayout.classList.toggle('config-collapsed');
+      this.visualizer?.fit();
+    });
+
+    // Refit visualization on window resize
+    window.addEventListener('resize', () => {
+      this.visualizer?.fit();
+    });
+
+    // Build NFA on startup
+    this.handleBuild();
+  }
+
+  // ============================================
+  // Session Storage
+  // ============================================
+
+  /**
+   * Save current input values to sessionStorage
+   */
+  saveToStorage() {
+    sessionStorage.setItem(STORAGE_KEYS.symbols, this.editors.symbols.toString());
+    sessionStorage.setItem(STORAGE_KEYS.startState, this.editors.startState.toString());
+    sessionStorage.setItem(STORAGE_KEYS.transition, this.editors.transition.toString());
+    sessionStorage.setItem(STORAGE_KEYS.accept, this.editors.accept.toString());
+    sessionStorage.setItem(STORAGE_KEYS.unified, this.editors.unified.toString());
+    sessionStorage.setItem(STORAGE_KEYS.unifiedMode, this.elements.unifiedToggle.checked);
+    sessionStorage.setItem(STORAGE_KEYS.testInput, this.elements.testInput.value);
+  }
+
+  /**
+   * Restore input values from sessionStorage
+   */
+  restoreFromStorage() {
+    const symbols = sessionStorage.getItem(STORAGE_KEYS.symbols);
+    const startState = sessionStorage.getItem(STORAGE_KEYS.startState);
+    const transition = sessionStorage.getItem(STORAGE_KEYS.transition);
+    const accept = sessionStorage.getItem(STORAGE_KEYS.accept);
+    const unified = sessionStorage.getItem(STORAGE_KEYS.unified);
+    const unifiedMode = sessionStorage.getItem(STORAGE_KEYS.unifiedMode);
+    const testInput = sessionStorage.getItem(STORAGE_KEYS.testInput);
+
+    if (symbols !== null) this.editors.symbols.updateCode(symbols);
+    if (startState !== null) this.editors.startState.updateCode(startState);
+    if (transition !== null) this.editors.transition.updateCode(transition);
+    if (accept !== null) this.editors.accept.updateCode(accept);
+    if (unified !== null) this.editors.unified.updateCode(unified);
+    if (testInput !== null) this.elements.testInput.value = testInput;
+
+    // Restore mode toggle state
+    if (unifiedMode === 'true') {
+      this.elements.unifiedToggle.checked = true;
+      this.elements.splitInput.classList.add('hidden');
+      this.elements.unifiedInput.classList.remove('hidden');
+    }
+  }
+
+  // ============================================
+  // Mode Toggle Handler
+  // ============================================
+
+  /**
+   * Toggle between split and unified input modes,
+   * converting code between formats.
+   */
+  handleModeToggle() {
+    const isUnified = this.elements.unifiedToggle.checked;
+
+    if (isUnified) {
+      // Convert split inputs to unified code
+      const code = buildCodeFromSplit(
+        this.editors.startState.toString() || '"start"',
+        this.editors.transition.toString() || 'return undefined;',
+        this.editors.accept.toString() || 'return false;'
+      );
+      this.editors.unified.updateCode(code);
+
+      this.elements.splitInput.classList.add('hidden');
+      this.elements.unifiedInput.classList.remove('hidden');
+    } else {
+      // Parse unified code back to split inputs
+      const parts = parseSplitFromCode(this.editors.unified.toString());
+      this.editors.startState.updateCode(parts.startState);
+      this.editors.transition.updateCode(parts.transitionBody);
+      this.editors.accept.updateCode(parts.acceptBody);
+
+      this.elements.unifiedInput.classList.add('hidden');
+      this.elements.splitInput.classList.remove('hidden');
+    }
+
+    this.saveToStorage();
+    this.hideError();
+  }
+
+  // ============================================
+  // Build Handler
+  // ============================================
+
+  /**
+   * Build the NFA from the current input code
+   */
+  handleBuild() {
+    this.hideError();
+
+    try {
+      // Get code from current input mode
+      const code = this.getCurrentCode();
+
+      // Parse and validate
+      const config = parseNFAConfig(code);
+
+      // Expand symbol class to array of symbols
+      const symbolClass = this.editors.symbols.toString().trim() || DEFAULT_SYMBOL_CLASS;
+      const symbols = expandSymbolClass(symbolClass);
+
+      // Build NFA
+      const builder = new NFABuilder(config, { ...CONFIG, symbols });
+      this.currentNFA = builder.build();
+
+      // Update UI
+      this.showResults();
+
+    } catch (e) {
+      this.showError(e.message);
+      this.hideResults();
+      this.currentNFA = null;
+    }
+  }
+
+  /**
+   * Get the current code from either split or unified mode
+   */
+  getCurrentCode() {
+    if (this.elements.unifiedToggle.checked) {
+      return this.editors.unified.toString();
+    }
+
+    return buildCodeFromSplit(
+      this.editors.startState.toString() || '"start"',
+      this.editors.transition.toString() || 'return undefined;',
+      this.editors.accept.toString() || 'return false;'
     );
-    editors.unified.updateCode(code);
-
-    elements.splitInput.classList.add('hidden');
-    elements.unifiedInput.classList.remove('hidden');
-  } else {
-    // Parse unified code back to split inputs
-    const parts = parseSplitFromCode(editors.unified.toString());
-    editors.startState.updateCode(parts.startState);
-    editors.transition.updateCode(parts.transitionBody);
-    editors.accept.updateCode(parts.acceptBody);
-
-    elements.unifiedInput.classList.add('hidden');
-    elements.splitInput.classList.remove('hidden');
   }
 
-  saveToStorage();
-  hideError();
-}
+  /**
+   * Show test section and visualization with current NFA
+   */
+  showResults() {
+    // Hide empty state message
+    this.elements.emptyState.classList.add('hidden');
 
-// ============================================
-// Build Handler
-// ============================================
+    // Reset toggle states
+    this.hideDeadStates = false;
+    this.mergeEquivalentStates = false;
+    this.elements.hideDeadToggle.checked = false;
+    this.elements.mergeToggle.checked = false;
 
-/**
- * Build the NFA from the current input code
- */
-function handleBuild() {
-  hideError();
+    // Compute initial transform
+    this.computeTransform();
 
-  try {
-    // Get code from current input mode
-    const code = getCurrentCode();
+    // Update stats display
+    this.updateStatsDisplay();
 
-    // Parse and validate
-    const config = parseNFAConfig(code);
+    // Build state list
+    this.updateStateList();
 
-    // Expand symbol class to array of symbols
-    const symbolClass = editors.symbols.toString().trim() || DEFAULT_SYMBOL_CLASS;
-    const symbols = expandSymbolClass(symbolClass);
+    // Render visualization
+    this.visualizer.render(this.currentNFA, this.currentTransform);
 
-    // Build NFA
-    const builder = new NFABuilder(config, { ...CONFIG, symbols });
-    currentNFA = builder.build();
-
-    // Update UI
-    showResults();
-
-  } catch (e) {
-    showError(e.message);
-    hideResults();
-    currentNFA = null;
-  }
-}
-
-/**
- * Get the current code from either split or unified mode
- */
-function getCurrentCode() {
-  if (elements.unifiedToggle.checked) {
-    return editors.unified.toString();
+    // Run test with current input
+    this.updateTestResult();
   }
 
-  return buildCodeFromSplit(
-    editors.startState.toString() || '"start"',
-    editors.transition.toString() || 'return undefined;',
-    editors.accept.toString() || 'return false;'
-  );
-}
+  /**
+   * Compute the combined transformation based on current toggle states
+   */
+  computeTransform() {
+    if (!this.currentNFA) {
+      this.currentTransform = null;
+      return;
+    }
 
-/**
- * Show test section and visualization with current NFA
- */
-function showResults() {
-  // Hide empty state message
-  elements.emptyState.classList.add('hidden');
+    // Start with identity
+    this.currentTransform = StateTransformation.identity(this.currentNFA.numStates());
 
-  // Reset toggle states
-  hideDeadStates = false;
-  mergeEquivalentStates = false;
-  elements.hideDeadToggle.checked = false;
-  elements.mergeToggle.checked = false;
+    // Apply dead state hiding (deletion)
+    if (this.hideDeadStates) {
+      const deadTransform = this.currentNFA.getDeadStates();
+      this.currentTransform = this.currentTransform.compose(deadTransform);
+    }
 
-  // Compute initial transform
-  computeTransform();
-
-  // Update stats display
-  updateStatsDisplay();
-
-  // Build state list
-  updateStateList();
-
-  // Render visualization
-  visualizer.render(currentNFA, currentTransform);
-
-  // Run test with current input
-  updateTestResult();
-}
-
-/**
- * Compute the combined transformation based on current toggle states
- */
-function computeTransform() {
-  if (!currentNFA) {
-    currentTransform = null;
-    return;
-  }
-
-  // Start with identity
-  currentTransform = StateTransformation.identity(currentNFA.numStates());
-
-  // Apply dead state hiding (deletion)
-  if (hideDeadStates) {
-    const deadTransform = currentNFA.getDeadStates();
-    currentTransform = currentTransform.compose(deadTransform);
-  }
-
-  // Apply equivalent state merging
-  if (mergeEquivalentStates) {
-    const mergeTransform = currentNFA.getEquivalentStateRemap(currentTransform);
-    currentTransform = mergeTransform;
-  }
-}
-
-/**
- * Recompute transform and re-render, preserving viewport and positions
- */
-function updateTransformAndRender() {
-  if (!currentNFA) return;
-
-  // Save current viewport and positions
-  const viewport = visualizer.getViewport();
-  const positions = visualizer.getNodePositions();
-
-  // Recompute the combined transform
-  computeTransform();
-
-  // Re-render with same positions
-  visualizer.render(currentNFA, currentTransform, positions);
-
-  // Restore viewport
-  visualizer.setViewport(viewport);
-
-  // Update stats display
-  updateStatsDisplay();
-  updateStateList();
-  updateTestResult();
-}
-
-/**
- * Update the stats display based on current NFA and transform
- */
-function updateStatsDisplay() {
-  // Count visible states (canonical states in transform)
-  let visibleStates = 0;
-  let visibleStart = 0;
-  let visibleAccept = 0;
-  let visibleDead = 0;
-
-  const deadTransform = currentNFA.getDeadStates();
-
-  for (let i = 0; i < currentTransform.remap.length; i++) {
-    // Only count canonical states (where remap[i] === i)
-    if (currentTransform.remap[i] === i) {
-      visibleStates++;
-      if (currentNFA.startStates.has(i)) visibleStart++;
-      if (currentNFA.acceptStates.has(i)) visibleAccept++;
-      if (deadTransform.isDeleted(i)) visibleDead++;
+    // Apply equivalent state merging
+    if (this.mergeEquivalentStates) {
+      const mergeTransform = this.currentNFA.getEquivalentStateRemap(this.currentTransform);
+      this.currentTransform = mergeTransform;
     }
   }
 
-  elements.statStates.textContent = visibleStates;
-  elements.statStart.textContent = visibleStart;
-  elements.statAccept.textContent = visibleAccept;
-  elements.statDead.textContent = visibleDead;
-}
+  /**
+   * Recompute transform and re-render, preserving viewport and positions
+   */
+  updateTransformAndRender() {
+    if (!this.currentNFA) return;
 
-/**
- * Update the state list display in the info panel
- */
-function updateStateList() {
-  const states = currentNFA.getStateInfo();
-  const labels = currentNFA.stateLabels;
+    // Save current viewport and positions
+    const viewport = this.visualizer.getViewport();
+    const positions = this.visualizer.getNodePositions();
 
-  // Build map of canonical state -> list of source states (cached for transitions display)
-  currentMergedSources = new Map();
-  for (const state of states) {
-    const canonical = currentTransform.remap[state.id];
-    if (canonical !== -1) {
-      if (!currentMergedSources.has(canonical)) {
-        currentMergedSources.set(canonical, []);
+    // Recompute the combined transform
+    this.computeTransform();
+
+    // Re-render with same positions
+    this.visualizer.render(this.currentNFA, this.currentTransform, positions);
+
+    // Restore viewport
+    this.visualizer.setViewport(viewport);
+
+    // Update stats display
+    this.updateStatsDisplay();
+    this.updateStateList();
+    this.updateTestResult();
+  }
+
+  /**
+   * Update the stats display based on current NFA and transform
+   */
+  updateStatsDisplay() {
+    // Count visible states (canonical states in transform)
+    let visibleStates = 0;
+    let visibleStart = 0;
+    let visibleAccept = 0;
+    let visibleDead = 0;
+
+    const deadTransform = this.currentNFA.getDeadStates();
+
+    for (let i = 0; i < this.currentTransform.remap.length; i++) {
+      // Only count canonical states (where remap[i] === i)
+      if (this.currentTransform.remap[i] === i) {
+        visibleStates++;
+        if (this.currentNFA.startStates.has(i)) visibleStart++;
+        if (this.currentNFA.acceptStates.has(i)) visibleAccept++;
+        if (deadTransform.isDeleted(i)) visibleDead++;
       }
-      currentMergedSources.get(canonical).push(state.id);
+    }
+
+    this.elements.statStates.textContent = visibleStates;
+    this.elements.statStart.textContent = visibleStart;
+    this.elements.statAccept.textContent = visibleAccept;
+    this.elements.statDead.textContent = visibleDead;
+  }
+
+  /**
+   * Update the state list display in the info panel
+   */
+  updateStateList() {
+    const states = this.currentNFA.getStateInfo();
+    const labels = this.currentNFA.stateLabels;
+
+    // Build map of canonical state -> list of source states (cached for transitions display)
+    this.currentMergedSources = new Map();
+    for (const state of states) {
+      const canonical = this.currentTransform.remap[state.id];
+      if (canonical !== -1) {
+        if (!this.currentMergedSources.has(canonical)) {
+          this.currentMergedSources.set(canonical, []);
+        }
+        this.currentMergedSources.get(canonical).push(state.id);
+      }
+    }
+
+    // Clear existing items
+    this.elements.stateList.replaceChildren();
+
+    for (const state of states) {
+      // Only show canonical states
+      if (this.currentTransform.remap[state.id] !== state.id) continue;
+
+      const sources = this.currentMergedSources.get(state.id) || [state.id];
+      const label = labels?.get(state.id) || `q${state.id}`;
+      const item = this.createStateItem(state, label, sources, this.currentNFA);
+      this.elements.stateList.appendChild(item);
     }
   }
 
-  // Clear existing items
-  elements.stateList.replaceChildren();
+  /**
+   * Create a state item DOM element
+   * @param {Object} state - The state object
+   * @param {string} label - The state label (used for non-merged states)
+   * @param {number[]} sources - Array of source state IDs for this state
+   * @param {import('./nfa.js').NFA} nfa - The NFA for looking up labels
+   */
+  createStateItem(state, label, sources, nfa) {
+    const item = document.createElement('div');
+    item.className = 'state-item';
+    item.dataset.stateId = state.id;
 
-  for (const state of states) {
-    // Only show canonical states
-    if (currentTransform.remap[state.id] !== state.id) continue;
+    // Header
+    const header = document.createElement('div');
+    header.className = 'state-header';
 
-    const sources = currentMergedSources.get(state.id) || [state.id];
-    const label = labels?.get(state.id) || `q${state.id}`;
-    const item = createStateItem(state, label, sources, currentNFA);
-    elements.stateList.appendChild(item);
-  }
-}
+    const idSpan = document.createElement('span');
+    idSpan.className = 'state-id';
+    // Use prime notation for merged states
+    const isMerged = sources.length > 1;
+    idSpan.textContent = isMerged ? `q'${state.id}` : `q${state.id}`;
 
-/**
- * Create a state item DOM element
- * @param {Object} state - The state object
- * @param {string} label - The state label (used for non-merged states)
- * @param {number[]} sources - Array of source state IDs for this state
- * @param {import('./nfa.js').NFA} nfa - The NFA for looking up labels
- */
-function createStateItem(state, label, sources, nfa) {
-  const item = document.createElement('div');
-  item.className = 'state-item';
-  item.dataset.stateId = state.id;
+    // For merged states, show all source states with their labels on separate lines
+    if (isMerged) {
+      header.appendChild(idSpan);
+      header.appendChild(document.createTextNode(' = '));
 
-  // Header
-  const header = document.createElement('div');
-  header.className = 'state-header';
-
-  const idSpan = document.createElement('span');
-  idSpan.className = 'state-id';
-  // Use prime notation for merged states
-  const isMerged = sources.length > 1;
-  idSpan.textContent = isMerged ? `q'${state.id}` : `q${state.id}`;
-
-  // For merged states, show all source states with their labels on separate lines
-  if (isMerged) {
-    header.appendChild(idSpan);
-    header.appendChild(document.createTextNode(' = '));
-
-    const sourcesList = document.createElement('div');
-    sourcesList.className = 'state-sources-list';
-    for (const id of sources) {
-      const sourceDiv = document.createElement('div');
-      sourceDiv.className = 'state-source-item';
-      const sourceLabel = nfa.stateLabels.get(id);
-      sourceDiv.textContent = sourceLabel !== null && sourceLabel !== undefined
-        ? `q${id}: ${sourceLabel}`
-        : `q${id}`;
-      sourcesList.appendChild(sourceDiv);
+      const sourcesList = document.createElement('div');
+      sourcesList.className = 'state-sources-list';
+      for (const id of sources) {
+        const sourceDiv = document.createElement('div');
+        sourceDiv.className = 'state-source-item';
+        const sourceLabel = nfa.stateLabels.get(id);
+        sourceDiv.textContent = sourceLabel !== null && sourceLabel !== undefined
+          ? `q${id}: ${sourceLabel}`
+          : `q${id}`;
+        sourcesList.appendChild(sourceDiv);
+      }
+      header.appendChild(sourcesList);
+    } else {
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'state-label';
+      labelSpan.textContent = label;
+      header.append(idSpan, ' = ', labelSpan);
     }
-    header.appendChild(sourcesList);
-  } else {
-    const labelSpan = document.createElement('span');
-    labelSpan.className = 'state-label';
-    labelSpan.textContent = label;
-    header.append(idSpan, ' = ', labelSpan);
+
+    // Flags
+    const flags = [];
+    if (state.isStart) flags.push('start');
+    if (state.isAccept) flags.push('accept');
+    if (state.isDead) flags.push('dead');
+
+    if (flags.length > 0) {
+      const flagsSpan = document.createElement('span');
+      flagsSpan.className = 'state-flags';
+      flagsSpan.textContent = ` (${flags.join(', ')})`;
+      header.appendChild(flagsSpan);
+    }
+
+    // Transitions container (populated on expand)
+    const transitions = document.createElement('div');
+    transitions.className = 'state-transitions hidden';
+
+    item.append(header, transitions);
+
+    // Click handler
+    item.addEventListener('click', () => {
+      this.handleStateSelect(state.id, item);
+    });
+
+    return item;
   }
 
-  // Flags
-  const flags = [];
-  if (state.isStart) flags.push('start');
-  if (state.isAccept) flags.push('accept');
-  if (state.isDead) flags.push('dead');
+  /**
+   * Handle state selection from state list click
+   */
+  handleStateSelect(stateId, itemElement) {
+    const wasSelected = itemElement.classList.contains('expanded');
 
-  if (flags.length > 0) {
-    const flagsSpan = document.createElement('span');
-    flagsSpan.className = 'state-flags';
-    flagsSpan.textContent = ` (${flags.join(', ')})`;
-    header.appendChild(flagsSpan);
+    // Collapse all items and clear graph selection
+    this.collapseAllStateItems();
+    this.visualizer.clearSelection();
+
+    if (wasSelected) {
+      // Was already selected, just deselect
+      return;
+    }
+
+    // Expand and select in graph
+    this.expandStateItem(stateId, itemElement);
+    this.visualizer.selectState(stateId);
   }
 
-  // Transitions container (populated on expand)
-  const transitions = document.createElement('div');
-  transitions.className = 'state-transitions hidden';
-
-  item.append(header, transitions);
-
-  // Click handler
-  item.addEventListener('click', () => {
-    handleStateSelect(state.id, item);
-  });
-
-  return item;
-}
-
-/**
- * Handle state selection from state list click
- */
-function handleStateSelect(stateId, itemElement) {
-  const wasSelected = itemElement.classList.contains('expanded');
-
-  // Collapse all items and clear graph selection
-  collapseAllStateItems();
-  visualizer.clearSelection();
-
-  if (wasSelected) {
-    // Was already selected, just deselect
-    return;
+  /**
+   * Collapse all state items in the list
+   */
+  collapseAllStateItems() {
+    this.elements.stateList.querySelectorAll('.state-item').forEach(item => {
+      item.classList.remove('expanded');
+      item.querySelector('.state-transitions')?.classList.add('hidden');
+    });
   }
 
-  // Expand and select in graph
-  expandStateItem(stateId, itemElement);
-  visualizer.selectState(stateId);
-}
+  /**
+   * Expand a state item to show its transitions (UI only, no graph update)
+   */
+  expandStateItem(stateId, itemElement) {
+    itemElement.classList.add('expanded');
+    const transitionsEl = itemElement.querySelector('.state-transitions');
 
-/**
- * Collapse all state items in the list
- */
-function collapseAllStateItems() {
-  elements.stateList.querySelectorAll('.state-item').forEach(item => {
-    item.classList.remove('expanded');
-    item.querySelector('.state-transitions')?.classList.add('hidden');
-  });
-}
+    // Clear and rebuild transitions content
+    transitionsEl.replaceChildren();
 
-/**
- * Expand a state item to show its transitions (UI only, no graph update)
- */
-function expandStateItem(stateId, itemElement) {
-  itemElement.classList.add('expanded');
-  const transitionsEl = itemElement.querySelector('.state-transitions');
+    const transitions = this.currentNFA.getTransitionsFrom(stateId);
+    if (transitions.length === 0) {
+      const row = document.createElement('div');
+      row.className = 'transition-row';
+      row.textContent = 'No outgoing transitions';
+      transitionsEl.appendChild(row);
+    } else {
+      for (const { to, symbols } of transitions) {
+        // Use prime notation if target state absorbed multiple states
+        const targetSources = this.currentMergedSources?.get(to);
+        const isMerged = targetSources && targetSources.length > 1;
+        transitionsEl.appendChild(this.createTransitionRow(to, symbols, isMerged));
+      }
+    }
+    transitionsEl.classList.remove('hidden');
+  }
 
-  // Clear and rebuild transitions content
-  transitionsEl.replaceChildren();
-
-  const transitions = currentNFA.getTransitionsFrom(stateId);
-  if (transitions.length === 0) {
+  /**
+   * Create a transition row DOM element
+   * @param {number} toState - Target state ID
+   * @param {string[]} symbols - Transition symbols
+   * @param {boolean} isMerged - Whether target state is a merged state
+   */
+  createTransitionRow(toState, symbols, isMerged = false) {
     const row = document.createElement('div');
     row.className = 'transition-row';
-    row.textContent = 'No outgoing transitions';
-    transitionsEl.appendChild(row);
-  } else {
-    for (const { to, symbols } of transitions) {
-      // Use prime notation if target state absorbed multiple states
-      const targetSources = currentMergedSources?.get(to);
-      const isMerged = targetSources && targetSources.length > 1;
-      transitionsEl.appendChild(createTransitionRow(to, symbols, isMerged));
+
+    const stateSpan = document.createElement('span');
+    stateSpan.className = 'state-id';
+    stateSpan.textContent = isMerged ? `q'${toState}` : `q${toState}`;
+
+    const symbolSpan = document.createElement('span');
+    symbolSpan.className = 'symbol-label';
+    symbolSpan.textContent = compactSymbolLabel(symbols);
+
+    row.append('→ ', stateSpan, ' on ', symbolSpan);
+    return row;
+  }
+
+  /**
+   * Update state list to match graph selection (called from graph click)
+   */
+  updateStateListSelection(stateId) {
+    this.collapseAllStateItems();
+
+    if (stateId === null) return;
+
+    // Find and expand the matching item (graph already has selection)
+    const item = this.elements.stateList.querySelector(`.state-item[data-state-id="${stateId}"]`);
+    if (item) {
+      this.expandStateItem(stateId, item);
     }
   }
-  transitionsEl.classList.remove('hidden');
-}
 
-/**
- * Create a transition row DOM element
- * @param {number} toState - Target state ID
- * @param {string[]} symbols - Transition symbols
- * @param {boolean} isMerged - Whether target state is a merged state
- */
-function createTransitionRow(toState, symbols, isMerged = false) {
-  const row = document.createElement('div');
-  row.className = 'transition-row';
-
-  const stateSpan = document.createElement('span');
-  stateSpan.className = 'state-id';
-  stateSpan.textContent = isMerged ? `q'${toState}` : `q${toState}`;
-
-  const symbolSpan = document.createElement('span');
-  symbolSpan.className = 'symbol-label';
-  symbolSpan.textContent = compactSymbolLabel(symbols);
-
-  row.append('→ ', stateSpan, ' on ', symbolSpan);
-  return row;
-}
-
-/**
- * Update state list to match graph selection (called from graph click)
- */
-function updateStateListSelection(stateId) {
-  collapseAllStateItems();
-
-  if (stateId === null) return;
-
-  // Find and expand the matching item (graph already has selection)
-  const item = elements.stateList.querySelector(`.state-item[data-state-id="${stateId}"]`);
-  if (item) {
-    expandStateItem(stateId, item);
-  }
-}
-
-/**
- * Reset UI to empty state
- */
-function hideResults() {
-  elements.emptyState.classList.remove('hidden');
-  elements.statStates.textContent = '—';
-  elements.statStart.textContent = '—';
-  elements.statAccept.textContent = '—';
-  elements.statDead.textContent = '—';
-  elements.stateList.innerHTML = '';
-}
-
-// ============================================
-// Test Handler
-// ============================================
-
-/**
- * Update test result and trace highlighting
- */
-function updateTestResult() {
-  if (!currentNFA) {
-    elements.testResult.textContent = '';
-    elements.testResult.className = 'test-result';
-    visualizer.clearHighlight();
-    return;
+  /**
+   * Reset UI to empty state
+   */
+  hideResults() {
+    this.elements.emptyState.classList.remove('hidden');
+    this.elements.statStates.textContent = '—';
+    this.elements.statStart.textContent = '—';
+    this.elements.statAccept.textContent = '—';
+    this.elements.statDead.textContent = '—';
+    this.elements.stateList.innerHTML = '';
   }
 
-  const inputStr = elements.testInput.value;
+  // ============================================
+  // Test Handler
+  // ============================================
 
-  try {
-    const sequence = parseInputSequence(inputStr);
-    const result = currentNFA.run(sequence);
-
-    displayTestResult(result, sequence);
-
-    // Update trace highlighting based on toggle
-    if (elements.showTraceToggle.checked) {
-      visualizer.highlightTrace(result.trace, currentTransform);
-    } else {
-      visualizer.clearHighlight();
+  /**
+   * Update test result and trace highlighting
+   */
+  updateTestResult() {
+    if (!this.currentNFA) {
+      this.elements.testResult.textContent = '';
+      this.elements.testResult.className = 'test-result';
+      this.visualizer.clearHighlight();
+      return;
     }
 
-  } catch (e) {
-    showTestResult(`Error: ${e.message}`, false);
-    visualizer.clearHighlight();
-  }
-}
+    const inputStr = this.elements.testInput.value;
 
-/**
- * Parse user input string into a sequence of symbol arrays.
- * Each character becomes a single-element array.
- * [charClass] syntax expands to array of matching symbols.
- * @returns {Array<string[]>} Array of symbol arrays
- */
-function parseInputSequence(inputStr) {
-  const result = [];
-  let i = 0;
+    try {
+      const sequence = this.parseInputSequence(inputStr);
+      const result = this.currentNFA.run(sequence);
 
-  while (i < inputStr.length) {
-    if (inputStr[i] === '[') {
-      // Find matching ]
-      const end = inputStr.indexOf(']', i + 1);
-      if (end === -1) {
-        throw new Error('Unclosed character class [');
+      this.displayTestResult(result, sequence);
+
+      // Update trace highlighting based on toggle
+      if (this.elements.showTraceToggle.checked) {
+        this.visualizer.highlightTrace(result.trace, this.currentTransform);
+      } else {
+        this.visualizer.clearHighlight();
       }
-      const charClass = inputStr.slice(i + 1, end);
-      if (charClass.length === 0) {
-        throw new Error('Empty character class []');
-      }
-      result.push(expandSymbolClass(charClass));
-      i = end + 1;
-    } else {
-      result.push([inputStr[i]]);
-      i++;
+
+    } catch (e) {
+      this.showTestResult(`Error: ${e.message}`, false);
+      this.visualizer.clearHighlight();
     }
   }
 
-  return result;
-}
+  /**
+   * Parse user input string into a sequence of symbol arrays.
+   * Each character becomes a single-element array.
+   * [charClass] syntax expands to array of matching symbols.
+   * @returns {Array<string[]>} Array of symbol arrays
+   */
+  parseInputSequence(inputStr) {
+    const result = [];
+    let i = 0;
 
-/**
- * Format a parsed input sequence for display
- */
-function formatInputSequence(sequence) {
-  if (sequence.length === 0) return '(empty)';
-  return sequence.map(symbols =>
-    symbols.length === 1 ? symbols[0] : `[${compactSymbolLabel(symbols)}]`
-  ).join('');
-}
+    while (i < inputStr.length) {
+      if (inputStr[i] === '[') {
+        // Find matching ]
+        const end = inputStr.indexOf(']', i + 1);
+        if (end === -1) {
+          throw new Error('Unclosed character class [');
+        }
+        const charClass = inputStr.slice(i + 1, end);
+        if (charClass.length === 0) {
+          throw new Error('Empty character class []');
+        }
+        result.push(expandSymbolClass(charClass));
+        i = end + 1;
+      } else {
+        result.push([inputStr[i]]);
+        i++;
+      }
+    }
 
-/**
- * Display the test result in the UI
- */
-function displayTestResult(result, sequence) {
-  const lastStep = result.trace[result.trace.length - 1];
-  const inputDisplay = formatInputSequence(sequence);
-
-  // Count final states, mapping through transform if active
-  const finalStateCount = countCanonicalStates(lastStep.states);
-
-  if (result.accepted) {
-    showTestResult(
-      `✓ ACCEPTED\nInput: ${inputDisplay}\nFinal states: ${finalStateCount}`,
-      true
-    );
-  } else {
-    const reason = lastStep.states.length === 0
-      ? 'No reachable states (dead end)'
-      : 'No accepting state reached';
-    showTestResult(
-      `✗ REJECTED\nInput: ${inputDisplay}\nReason: ${reason}`,
-      false
-    );
+    return result;
   }
-}
 
-/**
- * Count unique canonical states from a list of state IDs
- */
-function countCanonicalStates(stateIds) {
-  if (!currentTransform) return stateIds.length;
-  const canonical = new Set();
-  for (const id of stateIds) {
-    const mapped = currentTransform.remap[id];
-    if (mapped !== -1) canonical.add(mapped);
+  /**
+   * Format a parsed input sequence for display
+   */
+  formatInputSequence(sequence) {
+    if (sequence.length === 0) return '(empty)';
+    return sequence.map(symbols =>
+      symbols.length === 1 ? symbols[0] : `[${compactSymbolLabel(symbols)}]`
+    ).join('');
   }
-  return canonical.size;
-}
 
-/**
- * Show test result with appropriate styling
- */
-function showTestResult(message, accepted) {
-  elements.testResult.textContent = message;
-  elements.testResult.className = `test-result ${accepted ? 'accepted' : 'rejected'}`;
-}
+  /**
+   * Display the test result in the UI
+   */
+  displayTestResult(result, sequence) {
+    const lastStep = result.trace[result.trace.length - 1];
+    const inputDisplay = this.formatInputSequence(sequence);
 
-// ============================================
-// Error Display
-// ============================================
+    // Count final states, mapping through transform if active
+    const finalStateCount = this.countCanonicalStates(lastStep.states);
 
-function showError(message) {
-  elements.errorDisplay.textContent = message;
-  elements.errorDisplay.classList.remove('hidden');
-}
+    if (result.accepted) {
+      this.showTestResult(
+        `✓ ACCEPTED\nInput: ${inputDisplay}\nFinal states: ${finalStateCount}`,
+        true
+      );
+    } else {
+      const reason = lastStep.states.length === 0
+        ? 'No reachable states (dead end)'
+        : 'No accepting state reached';
+      this.showTestResult(
+        `✗ REJECTED\nInput: ${inputDisplay}\nReason: ${reason}`,
+        false
+      );
+    }
+  }
 
-function hideError() {
-  elements.errorDisplay.classList.add('hidden');
-}
+  /**
+   * Count unique canonical states from a list of state IDs
+   */
+  countCanonicalStates(stateIds) {
+    if (!this.currentTransform) return stateIds.length;
+    const canonical = new Set();
+    for (const id of stateIds) {
+      const mapped = this.currentTransform.remap[id];
+      if (mapped !== -1) canonical.add(mapped);
+    }
+    return canonical.size;
+  }
+
+  /**
+   * Show test result with appropriate styling
+   */
+  showTestResult(message, accepted) {
+    this.elements.testResult.textContent = message;
+    this.elements.testResult.className = `test-result ${accepted ? 'accepted' : 'rejected'}`;
+  }
+
+  // ============================================
+  // Error Display
+  // ============================================
+
+  showError(message) {
+    this.elements.errorDisplay.textContent = message;
+    this.elements.errorDisplay.classList.remove('hidden');
+  }
+
+  hideError() {
+    this.elements.errorDisplay.classList.add('hidden');
+  }
+
+} // End of App class
 
 // ============================================
 // Start Application
 // ============================================
 
-init();
+const app = new App();
+app.init();
