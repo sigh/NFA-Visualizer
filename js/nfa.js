@@ -110,16 +110,6 @@ export class StateTransformation {
   }
 }
 
-/**
- * Full set of symbols the app can use.
- * Includes digits, letters, and common punctuation.
- */
-const ALL_SYMBOLS =
-  '0123456789' +
-  'abcdefghijklmnopqrstuvwxyz' +
-  'ABCDEFGHIJKLMNOPQRSTUVWXYZ' +
-  '_-+*/.@#$%&!?';
-
 // ============================================
 // NFA Class
 // ============================================

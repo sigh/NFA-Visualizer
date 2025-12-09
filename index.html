@@ -124,23 +124,14 @@
       </div>
 
       <div class="metadata-section">
-        <div class="stat-group">
-          <div class="stat">
-            <span class="stat-label">States</span>
-            <span class="stat-value" id="stat-states">—</span>
-          </div>
-          <div class="stat">
-            <span class="stat-label">Start</span>
-            <span class="stat-value" id="stat-start">—</span>
-          </div>
-          <div class="stat">
-            <span class="stat-label">Accept</span>
-            <span class="stat-value" id="stat-accept">—</span>
-          </div>
-          <div class="stat" id="dead-stat-row">
-            <span class="stat-label">Dead</span>
-            <span class="stat-value stat-value-dead" id="stat-dead">—</span>
-          </div>
+        <div class="stat-row">
+          <span class="stat"><span class="stat-value" id="stat-states">—</span> states</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat"><span class="stat-value" id="stat-start">—</span> start</span>
+          <span class="stat"><span class="stat-value" id="stat-accept">—</span> accept</span>
+          <span class="stat"><span class="stat-value" id="stat-live">—</span> live</span>
+          <span class="stat"><span class="stat-value stat-value-dead" id="stat-dead">—</span> dead</span>
         </div>
         <label class="toggle-label toggle-small" id="hide-dead-row">
           <input type="checkbox" id="hide-dead-toggle">
@@ -160,10 +151,10 @@
             <span>Trace</span>
           </label>
         </div>
-        <div class="test-input-row">
+        <div class="test-row">
           <input type="text" id="test-input" value="12">
+          <span id="test-result" class="test-result"></span>
         </div>
-        <div id="test-result" class="test-result"></div>
       </div>
 
       <div class="state-list-section">

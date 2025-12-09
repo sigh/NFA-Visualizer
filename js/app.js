@@ -74,6 +74,7 @@ class App {
       statStates: document.getElementById('stat-states'),
       statStart: document.getElementById('stat-start'),
       statAccept: document.getElementById('stat-accept'),
+      statLive: document.getElementById('stat-live'),
       statDead: document.getElementById('stat-dead'),
       hideDeadToggle: document.getElementById('hide-dead-toggle'),
       mergeToggle: document.getElementById('merge-toggle'),
@@ -431,6 +432,7 @@ class App {
     this.elements.statStates.textContent = visibleStates;
     this.elements.statStart.textContent = visibleStart;
     this.elements.statAccept.textContent = visibleAccept;
+    this.elements.statLive.textContent = visibleStates - visibleDead;
     this.elements.statDead.textContent = visibleDead;
   }
 
@@ -652,6 +654,7 @@ class App {
     this.elements.statStates.textContent = '—';
     this.elements.statStart.textContent = '—';
     this.elements.statAccept.textContent = '—';
+    this.elements.statLive.textContent = '—';
     this.elements.statDead.textContent = '—';
     this.elements.stateList.innerHTML = '';
   }
@@ -739,24 +742,15 @@ class App {
    */
   displayTestResult(result, sequence) {
     const lastStep = result.trace[result.trace.length - 1];
-    const inputDisplay = this.formatInputSequence(sequence);
-
-    // Count final states, mapping through transform if active
-    const finalStateCount = this.countCanonicalStates(lastStep.states);
 
     if (result.accepted) {
-      this.showTestResult(
-        `✓ ACCEPTED\nInput: ${inputDisplay}\nFinal states: ${finalStateCount}`,
-        true
-      );
+      this.showTestResult(`✓ Accepted`, true);
     } else {
-      const reason = lastStep.states.length === 0
-        ? 'No reachable states (dead end)'
-        : 'No accepting state reached';
-      this.showTestResult(
-        `✗ REJECTED\nInput: ${inputDisplay}\nReason: ${reason}`,
-        false
-      );
+      // Dead end if all remaining states are dead
+      const deadTransform = this.currentNFA.getDeadStates();
+      const allDead = lastStep.states.every(id => deadTransform.isDeleted(id));
+      const reason = allDead ? 'Dead End' : 'Rejected';
+      this.showTestResult(`✗ ${reason}`, false);
     }
   }
 
