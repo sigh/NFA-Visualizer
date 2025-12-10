@@ -205,7 +205,7 @@ describe('NFAView', () => {
       nfa.addState();      // q0 - start
       nfa.addState(true);  // q1 - accept
       nfa.addState();      // q2
-      nfa.setStart(0);
+      nfa.addStart(0);
       const transform = StateTransformation.identity(3);
       const view = new NFAView(nfa, transform);
 

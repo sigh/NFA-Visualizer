@@ -146,28 +146,39 @@ export class NFA {
     return id;
   }
 
-  /** Mark a state as a start state */
-  setStart(stateId) {
+  /** Mark a state as a start state
+   * @return {boolean} True if the state was newly marked as a start state
+  */
+  addStart(stateId) {
+    if (this.startStates.has(stateId)) return false;
     this.startStates.add(stateId);
+    return true;
   }
 
-  /** Mark a state as an accepting state */
-  setAccept(stateId) {
+  /** Mark a state as an accepting state
+   * @return {boolean} True if the state was newly marked as accepting
+  */
+  addAccept(stateId) {
+    if (this.acceptStates.has(stateId)) return false;
     this.acceptStates.add(stateId);
+    return true;
   }
 
-  /** Add a transition from one state to another on a symbol index */
+  /** Add a transition from one state to another on a symbol index
+   * @return {boolean} True if the transition was newly added (not a duplicate)
+  */
   addTransition(fromState, toState, symbolIndex) {
     const stateTransitions = this._transitions[fromState];
-    if (!stateTransitions) return;
+    if (!stateTransitions) return false;
 
     if (!stateTransitions[symbolIndex]) {
       stateTransitions[symbolIndex] = [];
     }
     // Avoid duplicates
-    if (!stateTransitions[symbolIndex].includes(toState)) {
-      stateTransitions[symbolIndex].push(toState);
-    }
+    if (stateTransitions[symbolIndex].includes(toState)) return false;
+
+    stateTransitions[symbolIndex].push(toState);
+    return true;
   }
 
   /** Get all states reachable from a state on a given symbol index */
@@ -288,10 +299,10 @@ export class NFA {
 
     // Swap start and accept states
     for (const id of this.startStates) {
-      reversed.setAccept(id);
+      reversed.addAccept(id);
     }
     for (const id of this.acceptStates) {
-      reversed.setStart(id);
+      reversed.addStart(id);
     }
 
     // Reverse all transitions
@@ -526,7 +537,7 @@ export class NFA {
     for (const oldStart of this.startStates) {
       const newStart = oldToNew[oldStart];
       if (newStart !== -1) {
-        newNfa.setStart(newStart);
+        newNfa.addStart(newStart);
       }
     }
 

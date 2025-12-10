@@ -192,16 +192,17 @@ describe('NFA', () => {
     test('sets state as start state', () => {
       const nfa = new NFA(['a']);
       const id = nfa.addState();
-      nfa.setStart(id);
+      assert.strictEqual(nfa.addStart(id), true);
       assert(nfa.isStart(id));
+      assert.strictEqual(nfa.addStart(id), false);
     });
 
     test('allows multiple start states', () => {
       const nfa = new NFA(['a']);
       const s0 = nfa.addState();
       const s1 = nfa.addState();
-      nfa.setStart(s0);
-      nfa.setStart(s1);
+      assert.strictEqual(nfa.addStart(s0), true);
+      assert.strictEqual(nfa.addStart(s1), true);
       assert(nfa.isStart(s0));
       assert(nfa.isStart(s1));
     });
@@ -212,8 +213,9 @@ describe('NFA', () => {
       const nfa = new NFA(['a']);
       const id = nfa.addState(false);
       assert(!nfa.isAccepting(id));
-      nfa.setAccept(id);
+      assert.strictEqual(nfa.addAccept(id), true);
       assert(nfa.isAccepting(id));
+      assert.strictEqual(nfa.addAccept(id), false);
     });
   });
 
@@ -222,10 +224,11 @@ describe('NFA', () => {
       const nfa = new NFA(['a', 'b']);
       const s0 = nfa.addState();
       const s1 = nfa.addState();
-      nfa.addTransition(s0, s1, 0); // on 'a'
+      assert.strictEqual(nfa.addTransition(s0, s1, 0), true); // on 'a'
 
       const targets = nfa.getTransitions(s0, 0);
       assert(targets.includes(s1));
+      assert.strictEqual(nfa.addTransition(s0, s1, 0), false);
     });
 
     test('supports multiple transitions on same symbol', () => {
@@ -254,7 +257,7 @@ describe('NFA', () => {
       const nfa = new NFA(['a', 'b']);
       const s0 = nfa.addState();
       const s1 = nfa.addState();
-      nfa.setStart(s0);
+      nfa.addStart(s0);
       nfa.addTransition(s0, s1, 0);
       nfa.addTransition(s1, s0, 1);
 
@@ -284,7 +287,7 @@ describe('NFA', () => {
       const nfa = new NFA(['a', 'b']);
       const s0 = nfa.addState(false);
       const s1 = nfa.addState(true);
-      nfa.setStart(s0);
+      nfa.addStart(s0);
       nfa.addTransition(s0, s0, 0); // a -> stay
       nfa.addTransition(s0, s0, 1); // b -> stay
       nfa.addTransition(s0, s1, 0); // a -> accept
@@ -298,7 +301,7 @@ describe('NFA', () => {
       const nfa = new NFA(['a', 'b']);
       const s0 = nfa.addState(false);
       const s1 = nfa.addState(true);
-      nfa.setStart(s0);
+      nfa.addStart(s0);
       nfa.addTransition(s0, s1, 0); // only accept on 'a'
 
       const result = nfa.run([['b']]); // 'b'
@@ -309,7 +312,7 @@ describe('NFA', () => {
       const nfa = new NFA(['a']);
       const s0 = nfa.addState();
       const s1 = nfa.addState();
-      nfa.setStart(s0);
+      nfa.addStart(s0);
       nfa.addTransition(s0, s1, 0);
 
       const result = nfa.run([['a']]);
@@ -322,7 +325,7 @@ describe('NFA', () => {
       const s0 = nfa.addState();
       const s1 = nfa.addState();
       const s2 = nfa.addState(true);
-      nfa.setStart(s0);
+      nfa.addStart(s0);
       nfa.addTransition(s0, s1, 0); // a
       nfa.addTransition(s1, s2, 1); // b
 
@@ -336,7 +339,7 @@ describe('NFA', () => {
       const nfa = new NFA(['a']);
       const s0 = nfa.addState();
       const s1 = nfa.addState(true);
-      nfa.setStart(s0);
+      nfa.addStart(s0);
       nfa.addTransition(s0, s1, 0);
 
       const reversed = nfa.reverse();
@@ -350,7 +353,7 @@ describe('NFA', () => {
       const nfa = new NFA(['a']);
       const s0 = nfa.addState();
       const s1 = nfa.addState(true);
-      nfa.setStart(s0);
+      nfa.addStart(s0);
 
       const reversed = nfa.reverse();
       assert(reversed.isStart(s1));
@@ -364,7 +367,7 @@ describe('NFA', () => {
       const s0 = nfa.addState();
       const s1 = nfa.addState();
       const s2 = nfa.addState(); // unreachable
-      nfa.setStart(s0);
+      nfa.addStart(s0);
       nfa.addTransition(s0, s1, 0);
 
       const reachable = nfa.getReachableStates();
@@ -376,7 +379,7 @@ describe('NFA', () => {
     test('includes start states', () => {
       const nfa = new NFA(['a']);
       const s0 = nfa.addState();
-      nfa.setStart(s0);
+      nfa.addStart(s0);
 
       const reachable = nfa.getReachableStates();
       assert(reachable.has(s0));
@@ -389,7 +392,7 @@ describe('NFA', () => {
       const s0 = nfa.addState();
       const s1 = nfa.addState(true);
       const s2 = nfa.addState(); // dead - no transitions out
-      nfa.setStart(s0);
+      nfa.addStart(s0);
       nfa.addTransition(s0, s1, 0);
       nfa.addTransition(s0, s2, 0);
 
@@ -403,7 +406,7 @@ describe('NFA', () => {
       const nfa = new NFA(['a']);
       const s0 = nfa.addState();
       const s1 = nfa.addState(true);
-      nfa.setStart(s0);
+      nfa.addStart(s0);
       nfa.addTransition(s0, s1, 0);
 
       const dead = nfa.getDeadStates();
@@ -418,7 +421,7 @@ describe('NFA', () => {
       const s0 = nfa.addState();
       const s1 = nfa.addState(true);
       const s2 = nfa.addState(true); // equivalent to s1
-      nfa.setStart(s0);
+      nfa.addStart(s0);
       nfa.addTransition(s0, s1, 0);
       nfa.addTransition(s0, s2, 0);
       // s1 and s2 are both accepting with no outgoing transitions
@@ -432,7 +435,7 @@ describe('NFA', () => {
       const nfa = new NFA(['a']);
       const s0 = nfa.addState(false);
       const s1 = nfa.addState(true);
-      nfa.setStart(s0);
+      nfa.addStart(s0);
       nfa.addTransition(s0, s1, 0);
 
       const transform = nfa.getEquivalentStateRemap();
@@ -445,7 +448,7 @@ describe('NFA', () => {
       const s0 = nfa.addState();
       const s1 = nfa.addState(true);
       const s2 = nfa.addState();
-      nfa.setStart(s0);
+      nfa.addStart(s0);
 
       // Pre-delete s2
       const existing = StateTransformation.deletion(3, new Set([s2]));
@@ -461,7 +464,7 @@ describe('NFA', () => {
       const s0 = nfa.addState();
       const s1 = nfa.addState(true);
       const s2 = nfa.addState(true);
-      nfa.setStart(s0);
+      nfa.addStart(s0);
       nfa.addTransition(s0, s1, 0);
       nfa.addTransition(s0, s2, 0);
 
@@ -477,7 +480,7 @@ describe('NFA', () => {
       const s0 = nfa.addState();
       const s1 = nfa.addState(true);
       const s2 = nfa.addState();
-      nfa.setStart(s0);
+      nfa.addStart(s0);
       nfa.addTransition(s0, s1, 0);
 
       // Delete s2
@@ -491,7 +494,7 @@ describe('NFA', () => {
       const nfa = new NFA(['a']);
       const s0 = nfa.addState();
       const s1 = nfa.addState(true);
-      nfa.setStart(s0);
+      nfa.addStart(s0);
       nfa.addTransition(s0, s1, 0);
 
       const transform = StateTransformation.identity(2);
@@ -507,7 +510,7 @@ describe('NFA', () => {
       const nfa = new NFA(['a']);
       const s0 = nfa.addState();
       const s1 = nfa.addState(true);
-      nfa.setStart(s0);
+      nfa.addStart(s0);
 
       const info = nfa.getStateInfo();
       assert(Array.isArray(info));
@@ -524,7 +527,7 @@ describe('NFA', () => {
       const s0 = nfa.addState();
       const s1 = nfa.addState(true);
       const s2 = nfa.addState(); // dead state - no path to accept
-      nfa.setStart(s0);
+      nfa.addStart(s0);
       nfa.addTransition(s0, s1, 0);
       nfa.addTransition(s0, s2, 0);
 

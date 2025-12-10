@@ -128,7 +128,7 @@ export class NFABuilder {
       idToStateStr.set(id, stateStr);
 
       if (wrappedAccept(stateStr)) {
-        nfa.setAccept(id);
+        nfa.addAccept(id);
       }
 
       return id;
@@ -143,7 +143,7 @@ export class NFABuilder {
     for (const startState of startStates) {
       const stateStr = this._serializeState(startState);
       const id = addState(stateStr);
-      nfa.setStart(id);
+      nfa.addStart(id);
       queue.push(id);
     }
 
@@ -187,7 +187,7 @@ export class NFABuilder {
       for (const startId of [...nfa.startStates]) {
         const stateStr = idToStateStr.get(startId);
         for (const closureState of getEpsilonClosure(stateStr)) {
-          nfa.setStart(stateStrToId.get(closureState));
+          nfa.addStart(stateStrToId.get(closureState));
         }
       }
 
@@ -208,7 +208,7 @@ export class NFABuilder {
       for (const [stateStr, id] of stateStrToId) {
         for (const closureState of getEpsilonClosure(stateStr)) {
           if (nfa.acceptStates.has(stateStrToId.get(closureState))) {
-            nfa.setAccept(id);
+            nfa.addAccept(id);
             break;
           }
         }
