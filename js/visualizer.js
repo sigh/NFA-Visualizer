@@ -32,6 +32,7 @@ const COLORS = {
   transition: '#6a6a7a',
   transitionText: '#d0d0d8',
   transitionMuted: '#3a3a42',
+  epsilon: '#a78bfa', // Light purple for epsilon
   highlight: '#fbbf24',
   highlightDim: '#b08a1a',
   primary: '#6c9eff'
@@ -102,7 +103,11 @@ const CYTOSCAPE_STYLE = [
     selector: 'edge.epsilon',
     style: {
       'label': 'ε',
-      'font-style': 'italic'
+      'font-family': 'Times New Roman, serif',
+      'font-style': 'italic',
+      'font-size': '20px',
+      'font-weight': 'bold',
+      'color': COLORS.epsilon
     }
   },
 
@@ -649,7 +654,7 @@ export class NFAVisualizer {
       }
 
       // Epsilon transitions
-      if (view.hideEpsilonClosure) {
+      if (view.showEpsilonTransitions) {
         const epsilonTargets = view.getEpsilonTransitionsFrom(state.id);
         for (const to of epsilonTargets) {
           const isLoop = state.id === to;

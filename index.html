@@ -147,18 +147,18 @@
           <span class="stat"><span class="stat-value" id="stat-live">—</span> live</span>
           <span class="stat"><span class="stat-value stat-value-dead" id="stat-dead">—</span> dead</span>
         </div>
-        <label class="toggle-label toggle-small" id="hide-dead-row">
-          <input type="checkbox" id="hide-dead-toggle">
-          <span>Hide dead states</span>
-        </label>
-        <label class="toggle-label toggle-small" id="merge-row">
-          <input type="checkbox" id="merge-toggle">
-          <span>Merge equivalent states</span>
-        </label>
-        <label class="toggle-label toggle-small" id="hide-epsilon-row">
-          <input type="checkbox" id="hide-epsilon-toggle">
-          <span>Hide epsilon closure</span>
-        </label>
+
+        <div class="pipeline-container">
+          <div class="pipeline-track">
+            <input type="range" min="0" max="3" value="0" step="1" id="pipeline-slider">
+          </div>
+          <div class="pipeline-labels">
+            <div class="pipeline-step active" data-value="0">Raw NFA</div>
+            <div class="pipeline-step" data-value="1">Epsilon Closure</div>
+            <div class="pipeline-step" data-value="2">Prune States</div>
+            <div class="pipeline-step" data-value="3">Merge States</div>
+          </div>
+        </div>
       </div>
 
       <div class="test-section">

@@ -79,9 +79,8 @@ class App {
       statAccept: document.getElementById('stat-accept'),
       statLive: document.getElementById('stat-live'),
       statDead: document.getElementById('stat-dead'),
-      hideDeadToggle: document.getElementById('hide-dead-toggle'),
-      mergeToggle: document.getElementById('merge-toggle'),
-      hideEpsilonToggle: document.getElementById('hide-epsilon-toggle'),
+      pipelineSlider: document.getElementById('pipeline-slider'),
+      pipelineLabels: document.querySelectorAll('.pipeline-step'),
       stateList: document.getElementById('state-list')
     };
 
@@ -174,19 +173,20 @@ class App {
       this.updateStateListSelection(stateId);
     };
 
-    // Hide dead states toggle
-    this.elements.hideDeadToggle.addEventListener('change', () => {
+    // Pipeline slider
+    this.elements.pipelineSlider.addEventListener('input', () => {
+      this.updatePipelineUI();
       this.updateTransformAndRender();
     });
 
-    // Merge equivalent states toggle
-    this.elements.mergeToggle.addEventListener('change', () => {
-      this.updateTransformAndRender();
-    });
-
-    // Hide epsilon closure toggle
-    this.elements.hideEpsilonToggle.addEventListener('change', () => {
-      this.updateTransformAndRender();
+    // Pipeline labels click
+    this.elements.pipelineLabels.forEach(label => {
+      label.addEventListener('click', () => {
+        const value = label.dataset.value;
+        this.elements.pipelineSlider.value = value;
+        this.updatePipelineUI();
+        this.updateTransformAndRender();
+      });
     });
 
     // Config panel collapse/expand
@@ -348,14 +348,12 @@ class App {
     // Hide empty state message
     this.elements.emptyState.classList.add('hidden');
 
-    // Reset toggle options
-    this.elements.hideDeadToggle.checked = false;
-    this.elements.mergeToggle.checked = false;
-    this.elements.hideEpsilonToggle.checked = false;
+    // Reset pipeline slider
+    this.elements.pipelineSlider.value = 0;
+    this.updatePipelineUI();
 
-    // Create view with identity transform
-    const transform = StateTransformation.identity(this.currentNFA.numStates());
-    this.view = new NFAView(this.currentNFA, transform);
+    // Create view based on slider state
+    this.updateViewFromSlider();
 
     // Update stats display
     this.updateStatsDisplay();
@@ -371,16 +369,49 @@ class App {
   }
 
   /**
+   * Update the pipeline UI to reflect current slider value
+   */
+  updatePipelineUI() {
+    const value = parseInt(this.elements.pipelineSlider.value);
+    const max = parseInt(this.elements.pipelineSlider.max);
+    const percentage = (value / max) * 100;
+
+    // Update slider fill
+    this.elements.pipelineSlider.style.setProperty('--slider-progress', `${percentage}%`);
+
+    // Update labels
+    this.elements.pipelineLabels.forEach(label => {
+      const labelValue = parseInt(label.dataset.value);
+      if (labelValue <= value) {
+        label.classList.add('active');
+      } else {
+        label.classList.remove('active');
+      }
+    });
+  }
+
+  /**
+   * Create a new NFAView based on the current NFA and slider state
+   */
+  updateViewFromSlider() {
+    const step = parseInt(this.elements.pipelineSlider.value);
+    // In raw state (step 0), we want to SHOW epsilon transitions.
+    const showEpsilon = step === 0;
+
+    // Compute transform based on current pipeline step
+    const transform = this.computeTransform();
+    this.view = new NFAView(this.currentNFA, transform, {
+      showEpsilonTransitions: showEpsilon
+    });
+  }
+
+  /**
    * Recompute transform and re-render, preserving viewport and positions
    */
   updateTransformAndRender() {
     if (!this.currentNFA) return;
 
-    // Compute transform based on current toggle state
-    const transform = this.computeTransform();
-    this.view = new NFAView(this.currentNFA, transform, {
-      hideEpsilonClosure: this.elements.hideEpsilonToggle.checked
-    });
+    this.updateViewFromSlider();
 
     // Save current viewport and positions
     const viewport = this.visualizer.getViewport();
@@ -399,20 +430,23 @@ class App {
   }
 
   /**
-   * Compute the transform based on current toggle state
+   * Compute the transform based on current pipeline step
    * @returns {StateTransformation}
    */
   computeTransform() {
     let transform = StateTransformation.identity(this.currentNFA.numStates());
+    const step = parseInt(this.elements.pipelineSlider.value);
+    const hideDead = step >= 2;
+    const merge = step >= 3;
 
     // Apply dead state hiding
-    if (this.elements.hideDeadToggle.checked) {
+    if (hideDead) {
       const deadTransform = this.currentNFA.getDeadStates();
       transform = transform.compose(deadTransform);
     }
 
     // Apply equivalent state merging
-    if (this.elements.mergeToggle.checked) {
+    if (merge) {
       const mergeTransform = this.currentNFA.getEquivalentStateRemap(transform);
       transform = mergeTransform;
     }
@@ -445,13 +479,6 @@ class App {
     for (const state of states) {
       // Only show canonical states
       if (!this.view.isCanonical(state.id)) continue;
-
-      // If hiding epsilon closure, skip states that are not start/accept/reachable
-      // Note: This is a simplification. Ideally we'd filter out states that are purely
-      // epsilon-closure artifacts if they are not reachable via non-epsilon transitions.
-      // For now, we rely on the view's isStart/isAccept flags, but we might still show
-      // states that are only reachable via hidden epsilon transitions.
-      // A better approach might be to check if the state is reachable in the *view*.
 
       const sources = this.view.mergedSources.get(state.id) || [state.id];
       const item = this.createStateItem(state, sources);
@@ -573,15 +600,28 @@ class App {
     // Get transitions mapped through current transform
     const byCanonicalTarget = this.view.getTransitionsFrom(stateId);
 
-    if (byCanonicalTarget.size === 0) {
+    // Get epsilon transitions if enabled
+    let epsilonTargets = new Set();
+    if (this.view.showEpsilonTransitions) {
+      epsilonTargets = this.view.getEpsilonTransitionsFrom(stateId);
+    }
+
+    if (byCanonicalTarget.size === 0 && epsilonTargets.size === 0) {
       const row = document.createElement('div');
       row.className = 'transition-row';
       row.textContent = 'No outgoing transitions';
       transitionsEl.appendChild(row);
     } else {
+      // Regular transitions
       for (const [canonical, symbolSet] of byCanonicalTarget) {
         const isMerged = this.view.isMergedState(canonical);
         transitionsEl.appendChild(this.createTransitionRow(canonical, [...symbolSet], isMerged));
+      }
+
+      // Epsilon transitions
+      for (const canonical of epsilonTargets) {
+        const isMerged = this.view.isMergedState(canonical);
+        transitionsEl.appendChild(this.createTransitionRow(canonical, ['ε'], isMerged));
       }
     }
     transitionsEl.classList.remove('hidden');
@@ -602,8 +642,14 @@ class App {
     stateSpan.textContent = isMerged ? `q'${toState}` : `q${toState}`;
 
     const symbolSpan = document.createElement('span');
-    symbolSpan.className = 'symbol-label';
-    symbolSpan.textContent = compactSymbolLabel(symbols);
+    const label = compactSymbolLabel(symbols);
+    symbolSpan.textContent = label;
+
+    if (label === 'ε') {
+      symbolSpan.className = 'symbol-label symbol-epsilon';
+    } else {
+      symbolSpan.className = 'symbol-label';
+    }
 
     row.append('→ ', stateSpan, ' on ', symbolSpan);
     return row;

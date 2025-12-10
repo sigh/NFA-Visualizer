@@ -18,16 +18,18 @@ export class NFAView {
    * @param {NFA} nfa - The NFA
    * @param {StateTransformation} transform - The transformation to apply
    * @param {Object} [options] - View options
-   * @param {boolean} [options.hideEpsilonClosure] - Whether to hide epsilon closure artifacts
+   * @param {boolean} [options.showEpsilonTransitions] - Whether to show explicit epsilon transitions (raw NFA mode)
    */
   constructor(nfa, transform, options = {}) {
     this.nfa = nfa;
     this.transform = transform;
 
-    // Only allow hiding epsilon closure if we have an identity transform
+    // Only allow showing explicit epsilon transitions if we have an identity transform
     // This simplifies logic by avoiding edge cases with merged/deleted states
-    const isIdentity = this._isIdentityTransform();
-    this.hideEpsilonClosure = isIdentity && !!options.hideEpsilonClosure;
+    if (options.showEpsilonTransitions && !this._isIdentityTransform()) {
+      throw new Error('Cannot show explicit epsilon transitions with a non-identity transform');
+    }
+    this.showEpsilonTransitions = !!options.showEpsilonTransitions;
 
     // Compute merged sources once
     this.mergedSources = this._computeMergedSources();
@@ -95,7 +97,7 @@ export class NFAView {
    */
   isStart(stateId) {
     if (!this.nfa.startStates.has(stateId)) return false;
-    if (this.hideEpsilonClosure && this.nfa.epsilonClosureInfo?.addedStartStates.has(stateId)) return false;
+    if (this.showEpsilonTransitions && this.nfa.epsilonClosureInfo?.addedStartStates.has(stateId)) return false;
     return true;
   }
 
@@ -106,7 +108,7 @@ export class NFAView {
    */
   isAccepting(stateId) {
     if (!this.nfa.acceptStates.has(stateId)) return false;
-    if (this.hideEpsilonClosure && this.nfa.epsilonClosureInfo?.addedAcceptStates.has(stateId)) return false;
+    if (this.showEpsilonTransitions && this.nfa.epsilonClosureInfo?.addedAcceptStates.has(stateId)) return false;
     return true;
   }
 
@@ -153,8 +155,10 @@ export class NFAView {
       if (canonical === -1) continue; // Skip deleted states
 
       let visibleSymbols = symbols;
-      if (this.hideEpsilonClosure) {
-        // When hiding epsilon closure, transform is identity, so stateId/to are original IDs
+      if (this.showEpsilonTransitions) {
+        // When showing explicit epsilon transitions, we want to HIDE the closure artifacts
+        // (transitions added by epsilon closure).
+        // The transform is identity, so stateId/to are original IDs.
         const addedFrom = this.nfa.epsilonClosureInfo?.addedTransitions.get(stateId);
         if (addedFrom) {
           visibleSymbols = symbols.filter(symbol => {

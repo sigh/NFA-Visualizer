@@ -26,6 +26,7 @@
   --color-primary-hover: #5088ff;
   --color-success: #4ade80;
   --color-error: #f87171;
+  --color-epsilon: #a78bfa;
 
   /* Spacing */
   --space-xs: 4px;
@@ -380,6 +381,15 @@ header {
   .symbol-label {
     color: var(--color-text);
   }
+
+  .symbol-epsilon {
+    color: var(--color-epsilon);
+    font-family: 'Times New Roman', serif;
+    font-style: italic;
+    font-weight: bold;
+    font-size: 18px;
+    line-height: 1em;
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -708,4 +718,114 @@ button {
   .panel-viz {
     min-height: 400px;
   }
+}
+
+/* --------------------------------------------------------------------------
+   Pipeline Slider
+   -------------------------------------------------------------------------- */
+.pipeline-container {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  margin-top: var(--space-md);
+  padding: var(--space-sm) 0;
+  height: 140px;
+  border-top: 1px solid var(--color-border);
+}
+
+.pipeline-track {
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+#pipeline-slider {
+  /* Rotate to make vertical.
+     Standard range is horizontal.
+     Rotate 90deg: Left becomes Top (min), Right becomes Bottom (max).
+  */
+  transform: rotate(90deg);
+  width: 120px;
+  /* Becomes height */
+  height: 40px;
+  /* Becomes width */
+  cursor: pointer;
+  margin: 0;
+  /* Reset appearance */
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+
+  /* Progress fill logic */
+  --slider-progress: 0%;
+}
+
+/* Slider Track */
+#pipeline-slider::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(to right, var(--color-primary) var(--slider-progress), var(--color-surface-raised) var(--slider-progress));
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+#pipeline-slider::-moz-range-track {
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(to right, var(--color-primary) var(--slider-progress), var(--color-surface-raised) var(--slider-progress));
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+/* Slider Thumb */
+#pipeline-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: pointer;
+  margin-top: -6px;
+  /* Center on track */
+  box-shadow: 0 0 0 2px var(--color-bg);
+}
+
+#pipeline-slider::-moz-range-thumb {
+  height: 16px;
+  width: 16px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: pointer;
+  box-shadow: 0 0 0 2px var(--color-bg);
+}
+
+.pipeline-labels {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1;
+  padding: 4px 0 4px var(--space-sm);
+  /* Padding to align with slider ends */
+}
+
+.pipeline-step {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.pipeline-step.active {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.pipeline-step:hover {
+  color: var(--color-text);
 }
