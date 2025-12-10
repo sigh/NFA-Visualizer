@@ -147,6 +147,15 @@ const CYTOSCAPE_STYLE = [
       'color': COLORS.deadText
     }
   },
+  // Start + Dead: Show as a normal start state
+  {
+    selector: 'node.start.dead',
+    style: {
+      'background-color': COLORS.startState,
+      'border-color': COLORS.startState,
+      'color': COLORS.text,
+    }
+  },
   // Dead edges: muted, dashed
   {
     selector: 'edge.dead',
@@ -580,7 +589,7 @@ export class NFAVisualizer {
   buildElements() {
     const elements = [];
     const view = this.view;
-    const states = view.nfa.getStateInfo();
+    const states = view.getStateInfo();
 
     const deadStateIds = new Set();
 
@@ -609,22 +618,6 @@ export class NFAVisualizer {
         },
         classes: classes.join(' ')
       });
-
-      // Add invisible marker node + edge for start states
-      if (state.isStart) {
-        elements.push({
-          data: { id: `start-marker-${state.id}` },
-          classes: isCanonical ? 'start-marker' : 'start-marker hidden'
-        });
-        elements.push({
-          data: {
-            id: `start-edge-${state.id}`,
-            source: `start-marker-${state.id}`,
-            target: `s${state.id}`
-          },
-          classes: isCanonical ? 'start-arrow' : 'start-arrow hidden'
-        });
-      }
     }
 
     // Add edges for each canonical state

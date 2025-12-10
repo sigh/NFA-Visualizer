@@ -199,6 +199,8 @@ export class NFAView {
       isStart: this.isStart(id),
       isAccept: this.isAccepting(id),
       isDead: this.deadTransform.isDeleted(id)
+        // In Raw NFA mode, all start states should be live.
+        && (!this.showEpsilonTransitions || !this.isStart(id))
     }));
   }
 
