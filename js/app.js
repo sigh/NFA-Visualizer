@@ -9,6 +9,7 @@
 import { CodeJar } from '../lib/codejar.min.js';
 import { DEFAULT_SYMBOL_CLASS, StateTransformation } from './nfa.js';
 import { NFABuilder, parseNFAConfig, buildCodeFromSplit, parseSplitFromCode, expandSymbolClass } from './nfa_builder.js';
+import { NFAView } from './nfa_view.js';
 import { NFAVisualizer, compactSymbolLabel } from './visualizer.js';
 
 // ============================================
@@ -85,10 +86,7 @@ class App {
 
     // Application state
     this.currentNFA = null;
-    this.currentTransform = null;
-    this.currentMergedSources = null;
-    this.hideDeadStates = false;
-    this.mergeEquivalentStates = false;
+    this.view = null;
     this.visualizer = null;
 
     // CodeJar editor instances
@@ -177,13 +175,11 @@ class App {
 
     // Hide dead states toggle
     this.elements.hideDeadToggle.addEventListener('change', () => {
-      this.hideDeadStates = this.elements.hideDeadToggle.checked;
       this.updateTransformAndRender();
     });
 
     // Merge equivalent states toggle
     this.elements.mergeToggle.addEventListener('change', () => {
-      this.mergeEquivalentStates = this.elements.mergeToggle.checked;
       this.updateTransformAndRender();
     });
 
@@ -346,14 +342,13 @@ class App {
     // Hide empty state message
     this.elements.emptyState.classList.add('hidden');
 
-    // Reset toggle states
-    this.hideDeadStates = false;
-    this.mergeEquivalentStates = false;
+    // Reset toggle options
     this.elements.hideDeadToggle.checked = false;
     this.elements.mergeToggle.checked = false;
 
-    // Compute initial transform
-    this.computeTransform();
+    // Create view with identity transform
+    const transform = StateTransformation.identity(this.currentNFA.numStates());
+    this.view = new NFAView(this.currentNFA, transform);
 
     // Update stats display
     this.updateStatsDisplay();
@@ -362,35 +357,10 @@ class App {
     this.updateStateList();
 
     // Render visualization
-    this.visualizer.render(this.currentNFA, this.currentTransform);
+    this.visualizer.render(this.view);
 
     // Run test with current input
     this.updateTestResult();
-  }
-
-  /**
-   * Compute the combined transformation based on current toggle states
-   */
-  computeTransform() {
-    if (!this.currentNFA) {
-      this.currentTransform = null;
-      return;
-    }
-
-    // Start with identity
-    this.currentTransform = StateTransformation.identity(this.currentNFA.numStates());
-
-    // Apply dead state hiding (deletion)
-    if (this.hideDeadStates) {
-      const deadTransform = this.currentNFA.getDeadStates();
-      this.currentTransform = this.currentTransform.compose(deadTransform);
-    }
-
-    // Apply equivalent state merging
-    if (this.mergeEquivalentStates) {
-      const mergeTransform = this.currentNFA.getEquivalentStateRemap(this.currentTransform);
-      this.currentTransform = mergeTransform;
-    }
   }
 
   /**
@@ -399,15 +369,16 @@ class App {
   updateTransformAndRender() {
     if (!this.currentNFA) return;
 
+    // Compute transform based on current toggle state
+    const transform = this.computeTransform();
+    this.view = new NFAView(this.currentNFA, transform);
+
     // Save current viewport and positions
     const viewport = this.visualizer.getViewport();
     const positions = this.visualizer.getNodePositions();
 
-    // Recompute the combined transform
-    this.computeTransform();
-
     // Re-render with same positions
-    this.visualizer.render(this.currentNFA, this.currentTransform, positions);
+    this.visualizer.render(this.view, positions);
 
     // Restore viewport
     this.visualizer.setViewport(viewport);
@@ -419,32 +390,38 @@ class App {
   }
 
   /**
-   * Update the stats display based on current NFA and transform
+   * Compute the transform based on current toggle state
+   * @returns {StateTransformation}
    */
-  updateStatsDisplay() {
-    // Count visible states (canonical states in transform)
-    let visibleStates = 0;
-    let visibleStart = 0;
-    let visibleAccept = 0;
-    let visibleDead = 0;
+  computeTransform() {
+    let transform = StateTransformation.identity(this.currentNFA.numStates());
 
-    const deadTransform = this.currentNFA.getDeadStates();
-
-    for (let i = 0; i < this.currentTransform.remap.length; i++) {
-      // Only count canonical states (where remap[i] === i)
-      if (this.currentTransform.remap[i] === i) {
-        visibleStates++;
-        if (this.currentNFA.startStates.has(i)) visibleStart++;
-        if (this.currentNFA.acceptStates.has(i)) visibleAccept++;
-        if (deadTransform.isDeleted(i)) visibleDead++;
-      }
+    // Apply dead state hiding
+    if (this.elements.hideDeadToggle.checked) {
+      const deadTransform = this.currentNFA.getDeadStates();
+      transform = transform.compose(deadTransform);
     }
 
-    this.elements.statStates.textContent = visibleStates;
-    this.elements.statStart.textContent = visibleStart;
-    this.elements.statAccept.textContent = visibleAccept;
-    this.elements.statLive.textContent = visibleStates - visibleDead;
-    this.elements.statDead.textContent = visibleDead;
+    // Apply equivalent state merging
+    if (this.elements.mergeToggle.checked) {
+      const mergeTransform = this.currentNFA.getEquivalentStateRemap(transform);
+      transform = mergeTransform;
+    }
+
+    return transform;
+  }
+
+  /**
+   * Update the stats display based on current NFA and view
+   */
+  updateStatsDisplay() {
+    const stats = this.view.getStats();
+
+    this.elements.statStates.textContent = stats.total;
+    this.elements.statStart.textContent = stats.start;
+    this.elements.statAccept.textContent = stats.accept;
+    this.elements.statLive.textContent = stats.live;
+    this.elements.statDead.textContent = stats.dead;
   }
 
   /**
@@ -453,26 +430,14 @@ class App {
   updateStateList() {
     const states = this.currentNFA.getStateInfo();
 
-    // Build map of canonical state -> list of source states (cached for transitions display)
-    this.currentMergedSources = new Map();
-    for (const state of states) {
-      const canonical = this.currentTransform.remap[state.id];
-      if (canonical !== -1) {
-        if (!this.currentMergedSources.has(canonical)) {
-          this.currentMergedSources.set(canonical, []);
-        }
-        this.currentMergedSources.get(canonical).push(state.id);
-      }
-    }
-
     // Clear existing items
     this.elements.stateList.replaceChildren();
 
     for (const state of states) {
       // Only show canonical states
-      if (this.currentTransform.remap[state.id] !== state.id) continue;
+      if (!this.view.isCanonical(state.id)) continue;
 
-      const sources = this.currentMergedSources.get(state.id) || [state.id];
+      const sources = this.view.mergedSources.get(state.id) || [state.id];
       const item = this.createStateItem(state, sources);
       this.elements.stateList.appendChild(item);
     }
@@ -589,22 +554,8 @@ class App {
     // Clear and rebuild transitions content
     transitionsEl.replaceChildren();
 
-    // Get transitions and map through current transform
-    const rawTransitions = this.currentNFA.getTransitionsFrom(stateId);
-
-    // Group transitions by canonical target state, filtering deleted states
-    const byCanonicalTarget = new Map();
-    for (const { to, symbols } of rawTransitions) {
-      const canonical = this.currentTransform.remap[to];
-      if (canonical === -1) continue; // Skip deleted states
-
-      if (!byCanonicalTarget.has(canonical)) {
-        byCanonicalTarget.set(canonical, new Set());
-      }
-      for (const symbol of symbols) {
-        byCanonicalTarget.get(canonical).add(symbol);
-      }
-    }
+    // Get transitions mapped through current transform
+    const byCanonicalTarget = this.view.getTransitionsFrom(stateId);
 
     if (byCanonicalTarget.size === 0) {
       const row = document.createElement('div');
@@ -613,7 +564,7 @@ class App {
       transitionsEl.appendChild(row);
     } else {
       for (const [canonical, symbolSet] of byCanonicalTarget) {
-        const isMerged = (this.currentMergedSources?.get(canonical)?.length ?? 1) > 1;
+        const isMerged = this.view.isMergedState(canonical);
         transitionsEl.appendChild(this.createTransitionRow(canonical, [...symbolSet], isMerged));
       }
     }
@@ -695,7 +646,7 @@ class App {
 
       // Update trace highlighting based on toggle
       if (this.elements.showTraceToggle.checked) {
-        this.visualizer.highlightTrace(result.trace, this.currentTransform);
+        this.visualizer.highlightTrace(result.trace);
       } else {
         this.visualizer.clearHighlight();
       }
@@ -769,10 +720,10 @@ class App {
    * Count unique canonical states from a list of state IDs
    */
   countCanonicalStates(stateIds) {
-    if (!this.currentTransform) return stateIds.length;
+    if (!this.view) return stateIds.length;
     const canonical = new Set();
     for (const id of stateIds) {
-      const mapped = this.currentTransform.remap[id];
+      const mapped = this.view.getCanonical(id);
       if (mapped !== -1) canonical.add(mapped);
     }
     return canonical.size;
