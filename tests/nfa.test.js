@@ -308,29 +308,113 @@ describe('NFA', () => {
       assert(!result.accepted);
     });
 
-    test('returns trace of states', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addStart(s0);
-      nfa.addTransition(s0, s1, 0);
-
-      const result = nfa.run([['a']]);
-      assert(result.trace.length > 0);
-      assert.strictEqual(result.trace[0].step, 0);
-    });
-
-    test('handles multi-step input', () => {
+    test('trace records correct state history', () => {
       const nfa = new NFA(['a', 'b']);
       const s0 = nfa.addState();
       const s1 = nfa.addState();
-      const s2 = nfa.addState(true);
-      nfa.addStart(s0);
-      nfa.addTransition(s0, s1, 0); // a
-      nfa.addTransition(s1, s2, 1); // b
+      const s2 = nfa.addState();
 
-      const result = nfa.run([['a'], ['b']]); // 'ab'
+      nfa.addStart(s0);
+      // s0 --a--> s1 --b--> s2
+      nfa.addTransition(s0, s1, 0);
+      nfa.addTransition(s1, s2, 1);
+
+      const result = nfa.run([['a'], ['b']]);
+
+      assert.strictEqual(result.trace.length, 3);
+
+      assert.deepStrictEqual(result.trace[0], {
+        step: 0,
+        input: null,
+        states: [s0]
+      });
+
+      assert.deepStrictEqual(result.trace[1], {
+        step: 1,
+        input: ['a'],
+        states: [s1]
+      });
+
+      assert.deepStrictEqual(result.trace[2], {
+        step: 2,
+        input: ['b'],
+        states: [s2]
+      });
+    });
+
+    test('accepts empty input if start state is accepting', () => {
+      const nfa = new NFA(['a']);
+      const s0 = nfa.addState(true);
+      nfa.addStart(s0);
+
+      const result = nfa.run([]);
       assert(result.accepted);
+      assert.strictEqual(result.trace.length, 1);
+      assert.deepStrictEqual(result.trace[0].states, [s0]);
+    });
+
+    test('handles cycles correctly', () => {
+      const nfa = new NFA(['a']);
+      const s0 = nfa.addState();
+      const s1 = nfa.addState(true);
+      nfa.addStart(s0);
+      // s0 --a--> s1 --a--> s0
+      nfa.addTransition(s0, s1, 0);
+      nfa.addTransition(s1, s0, 0);
+
+      // 'aaa' -> s0 -> s1 -> s0 -> s1 (accept)
+      const result = nfa.run([['a'], ['a'], ['a']]);
+      assert(result.accepted);
+      assert.strictEqual(result.trace.length, 4);
+      assert.deepStrictEqual(result.trace[3].states, [s1]);
+    });
+
+    test('handles multiple symbols in one step', () => {
+      const nfa = new NFA(['a', 'b']);
+      const s0 = nfa.addState();
+      const s1 = nfa.addState(true);
+      nfa.addStart(s0);
+      // s0 --a--> s1
+      // s0 --b--> s1
+      nfa.addTransition(s0, s1, 0);
+      nfa.addTransition(s0, s1, 1);
+
+      // Input step contains both 'a' and 'b', should follow both transitions
+      const result = nfa.run([['a', 'b']]);
+      assert(result.accepted);
+      assert.deepStrictEqual(result.trace[1].states, [s1]);
+    });
+
+    test('trace handles non-determinism', () => {
+      const nfa = new NFA(['a']);
+      const s0 = nfa.addState();
+      const s1 = nfa.addState();
+      const s2 = nfa.addState();
+
+      nfa.addStart(s0);
+      // s0 --a--> s1
+      // s0 --a--> s2
+      nfa.addTransition(s0, s1, 0);
+      nfa.addTransition(s0, s2, 0);
+
+      const result = nfa.run([['a']]);
+
+      assert.strictEqual(result.trace.length, 2);
+      const states = result.trace[1].states.sort((a, b) => a - b);
+      assert.deepStrictEqual(states, [s1, s2].sort((a, b) => a - b));
+    });
+
+    test('trace stops early if no states remain', () => {
+      const nfa = new NFA(['a']);
+      const s0 = nfa.addState();
+      nfa.addStart(s0);
+      // No transitions
+
+      const result = nfa.run([['a'], ['a']]);
+
+      // Should have step 0 (start) and step 1 (empty), then break
+      assert.strictEqual(result.trace.length, 2);
+      assert.deepStrictEqual(result.trace[1].states, []);
     });
   });
 

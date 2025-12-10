@@ -98,6 +98,13 @@ const CYTOSCAPE_STYLE = [
       'loop-sweep': '90deg'
     }
   },
+  {
+    selector: 'edge.epsilon',
+    style: {
+      'label': 'ε',
+      'font-style': 'italic'
+    }
+  },
 
   // ========== STATE TYPE STYLES ==========
   // Start state: blue fill
@@ -619,6 +626,7 @@ export class NFAVisualizer {
     for (const state of states) {
       if (!view.isCanonical(state.id)) continue;
 
+      // Regular transitions
       const transitions = view.getTransitionsFrom(state.id);
       for (const [to, symbols] of transitions) {
         const isLoop = state.id === to;
@@ -638,6 +646,29 @@ export class NFAVisualizer {
           },
           classes: classes.join(' ')
         });
+      }
+
+      // Epsilon transitions
+      if (view.hideEpsilonClosure) {
+        const epsilonTargets = view.getEpsilonTransitionsFrom(state.id);
+        for (const to of epsilonTargets) {
+          const isLoop = state.id === to;
+          const isDead = deadStateIds.has(state.id) || deadStateIds.has(to);
+
+          const classes = ['epsilon'];
+          if (isLoop) classes.push('loop');
+          if (isDead) classes.push('dead');
+
+          elements.push({
+            data: {
+              id: `eps${state.id}-${to}`,
+              source: `s${state.id}`,
+              target: `s${to}`,
+              label: 'ε'
+            },
+            classes: classes.join(' ')
+          });
+        }
       }
     }
 
@@ -726,6 +757,69 @@ export class NFAVisualizer {
   }
 
   /**
+   * Calculate which elements should be highlighted for a trace
+   * @param {Array<{states: number[]}>} trace
+   * @returns {{visitedStates: Set<number>, visitedEdges: Set<string>, visitedEpsilonEdges: Set<string>, finalStates: Set<number>}}
+   */
+  calculateTraceHighlights(trace) {
+    const view = this.view;
+    const visitedStates = new Set();
+    const visitedEdges = new Set();
+    const visitedEpsilonEdges = new Set();
+
+    // Helper to get canonical set for a step
+    const getCanonicalSet = (states) => {
+      const set = new Set();
+      for (const id of states) {
+        const canonical = view.getCanonical(id);
+        if (canonical !== -1) set.add(canonical);
+      }
+      return set;
+    };
+
+    let prevCanonicalStates = new Set();
+
+    for (let i = 0; i < trace.length; i++) {
+      const step = trace[i];
+      const currCanonicalStates = getCanonicalSet(step.states);
+
+      // Add to visited states
+      for (const s of currCanonicalStates) visitedStates.add(s);
+
+      // 1. Check for epsilon transitions within the current step
+      for (const fromId of currCanonicalStates) {
+        const epsilonTargets = view.getEpsilonTransitionsFrom(fromId);
+        for (const toId of epsilonTargets) {
+          if (currCanonicalStates.has(toId)) {
+            visitedEpsilonEdges.add(`${fromId}-${toId}`);
+          }
+        }
+      }
+
+      // 2. Check for transitions from previous step
+      if (i > 0) {
+        for (const fromId of prevCanonicalStates) {
+          const transitions = view.getTransitionsFrom(fromId);
+          for (const toId of transitions.keys()) {
+            if (currCanonicalStates.has(toId)) {
+              visitedEdges.add(`${fromId}-${toId}`);
+            }
+          }
+        }
+      }
+
+      prevCanonicalStates = currCanonicalStates;
+    }
+
+    // Get final canonical states
+    const finalStates = trace.length > 0
+      ? getCanonicalSet(trace[trace.length - 1].states)
+      : new Set();
+
+    return { visitedStates, visitedEdges, visitedEpsilonEdges, finalStates };
+  }
+
+  /**
    * Highlight all states and edges visited during a trace
    * @param {Array<{states: number[]}>} trace
    */
@@ -735,60 +829,31 @@ export class NFAVisualizer {
     // Clear previous highlights (selection is independent)
     this.cy.elements().removeClass('highlighted highlighted-final');
 
-    const view = this.view;
+    const { visitedStates, visitedEdges, visitedEpsilonEdges, finalStates } = this.calculateTraceHighlights(trace);
 
-    // Track visited canonical states at each step and transitions taken
-    const visitedStates = new Set();
-    const visitedEdges = new Set();
-
-    for (let i = 0; i < trace.length; i++) {
-      const step = trace[i];
-      for (const stateId of step.states) {
-        const canonical = view.getCanonical(stateId);
-        if (canonical !== -1) visitedStates.add(canonical);
-      }
-
-      // Track edges from previous step to current step (using canonical IDs)
-      if (i > 0) {
-        const prevStates = trace[i - 1].states;
-        for (const fromId of prevStates) {
-          for (const toId of step.states) {
-            const canonicalFrom = view.getCanonical(fromId);
-            const canonicalTo = view.getCanonical(toId);
-            if (canonicalFrom !== -1 && canonicalTo !== -1) {
-              visitedEdges.add(`${canonicalFrom}-${canonicalTo}`);
-            }
-          }
+    // Apply highlights in batch
+    this.cy.batch(() => {
+      // Highlight visited states
+      for (const stateId of visitedStates) {
+        const node = this.cy.$(`#s${stateId}`);
+        if (finalStates.has(stateId)) {
+          node.addClass('highlighted-final');
+        } else {
+          node.addClass('highlighted');
         }
       }
-    }
 
-    // Get final canonical states
-    const finalStates = new Set();
-    if (trace.length > 0) {
-      for (const stateId of trace[trace.length - 1].states) {
-        const canonical = view.getCanonical(stateId);
-        if (canonical !== -1) finalStates.add(canonical);
+      // Highlight visited edges
+      for (const edgeKey of visitedEdges) {
+        this.cy.$(`#e${edgeKey}`).addClass('highlighted');
       }
-    }
 
-    // Highlight visited states
-    for (const stateId of visitedStates) {
-      const node = this.cy.$(`#s${stateId}`);
-      if (finalStates.has(stateId)) {
-        node.addClass('highlighted-final');
-      } else {
-        node.addClass('highlighted');
+      // Highlight visited epsilon edges
+      for (const edgeKey of visitedEpsilonEdges) {
+        this.cy.$(`#eps${edgeKey}`).addClass('highlighted');
       }
-    }
-
-    // Highlight visited edges
-    for (const edgeKey of visitedEdges) {
-      this.cy.$(`#e${edgeKey}`).addClass('highlighted');
-    }
-  }
-
-  /**
+    });
+  }  /**
    * Clear all trace highlighting
    */
   clearHighlight() {

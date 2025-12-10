@@ -81,6 +81,7 @@ class App {
       statDead: document.getElementById('stat-dead'),
       hideDeadToggle: document.getElementById('hide-dead-toggle'),
       mergeToggle: document.getElementById('merge-toggle'),
+      hideEpsilonToggle: document.getElementById('hide-epsilon-toggle'),
       stateList: document.getElementById('state-list')
     };
 
@@ -180,6 +181,11 @@ class App {
 
     // Merge equivalent states toggle
     this.elements.mergeToggle.addEventListener('change', () => {
+      this.updateTransformAndRender();
+    });
+
+    // Hide epsilon closure toggle
+    this.elements.hideEpsilonToggle.addEventListener('change', () => {
       this.updateTransformAndRender();
     });
 
@@ -345,6 +351,7 @@ class App {
     // Reset toggle options
     this.elements.hideDeadToggle.checked = false;
     this.elements.mergeToggle.checked = false;
+    this.elements.hideEpsilonToggle.checked = false;
 
     // Create view with identity transform
     const transform = StateTransformation.identity(this.currentNFA.numStates());
@@ -371,7 +378,9 @@ class App {
 
     // Compute transform based on current toggle state
     const transform = this.computeTransform();
-    this.view = new NFAView(this.currentNFA, transform);
+    this.view = new NFAView(this.currentNFA, transform, {
+      hideEpsilonClosure: this.elements.hideEpsilonToggle.checked
+    });
 
     // Save current viewport and positions
     const viewport = this.visualizer.getViewport();
@@ -428,7 +437,7 @@ class App {
    * Update the state list display in the info panel
    */
   updateStateList() {
-    const states = this.currentNFA.getStateInfo();
+    const states = this.view.getStateInfo();
 
     // Clear existing items
     this.elements.stateList.replaceChildren();
@@ -436,6 +445,13 @@ class App {
     for (const state of states) {
       // Only show canonical states
       if (!this.view.isCanonical(state.id)) continue;
+
+      // If hiding epsilon closure, skip states that are not start/accept/reachable
+      // Note: This is a simplification. Ideally we'd filter out states that are purely
+      // epsilon-closure artifacts if they are not reachable via non-epsilon transitions.
+      // For now, we rely on the view's isStart/isAccept flags, but we might still show
+      // states that are only reachable via hidden epsilon transitions.
+      // A better approach might be to check if the state is reachable in the *view*.
 
       const sources = this.view.mergedSources.get(state.id) || [state.id];
       const item = this.createStateItem(state, sources);

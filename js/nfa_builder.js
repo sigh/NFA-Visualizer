@@ -175,6 +175,13 @@ export class NFABuilder {
       // Explore epsilon transitions
       for (const closureState of getEpsilonTargets(stateStr)) {
         const closureId = addState(closureState);
+
+        // Record explicit epsilon transition
+        if (!nfa.epsilonTransitions.has(currentId)) {
+          nfa.epsilonTransitions.set(currentId, new Set());
+        }
+        nfa.epsilonTransitions.get(currentId).add(closureId);
+
         if (!visited.has(closureId)) {
           queue.push(closureId);
         }
@@ -182,12 +189,21 @@ export class NFABuilder {
     }
 
     // Apply epsilon closure transformations to NFA structure
+    const epsilonClosureInfo = {
+      addedStartStates: new Set(),
+      addedAcceptStates: new Set(),
+      addedTransitions: new Map() // fromId -> symbolIndex -> Set<toId>
+    };
+
     if (wrappedEpsilon) {
       // Expand start states to include epsilon closures
       for (const startId of [...nfa.startStates]) {
         const stateStr = idToStateStr.get(startId);
         for (const closureState of getEpsilonClosure(stateStr)) {
-          nfa.addStart(stateStrToId.get(closureState));
+          const id = stateStrToId.get(closureState);
+          if (nfa.addStart(id)) {
+            epsilonClosureInfo.addedStartStates.add(id);
+          }
         }
       }
 
@@ -195,10 +211,26 @@ export class NFABuilder {
       const numStates = nfa.numStates();
       for (let fromId = 0; fromId < numStates; fromId++) {
         for (let symbolIndex = 0; symbolIndex < this.symbols.length; symbolIndex++) {
-          for (const toId of nfa.getTransitions(fromId, symbolIndex)) {
+          // Snapshot transitions to avoid iterating over newly added ones
+          const targets = [...nfa.getTransitions(fromId, symbolIndex)];
+          for (const toId of targets) {
             const toStateStr = idToStateStr.get(toId);
             for (const closureState of getEpsilonClosure(toStateStr)) {
-              nfa.addTransition(fromId, stateStrToId.get(closureState), symbolIndex);
+              const targetId = stateStrToId.get(closureState);
+              if (nfa.addTransition(fromId, targetId, symbolIndex)) {
+                // Record added transition
+                let fromMap = epsilonClosureInfo.addedTransitions.get(fromId);
+                if (!fromMap) {
+                  fromMap = new Map();
+                  epsilonClosureInfo.addedTransitions.set(fromId, fromMap);
+                }
+                let toSet = fromMap.get(symbolIndex);
+                if (!toSet) {
+                  toSet = new Set();
+                  fromMap.set(symbolIndex, toSet);
+                }
+                toSet.add(targetId);
+              }
             }
           }
         }
@@ -208,7 +240,9 @@ export class NFABuilder {
       for (const [stateStr, id] of stateStrToId) {
         for (const closureState of getEpsilonClosure(stateStr)) {
           if (nfa.acceptStates.has(stateStrToId.get(closureState))) {
-            nfa.addAccept(id);
+            if (nfa.addAccept(id)) {
+              epsilonClosureInfo.addedAcceptStates.add(id);
+            }
             break;
           }
         }
@@ -217,6 +251,7 @@ export class NFABuilder {
 
     // Store state labels for visualization
     nfa.stateLabels = idToStateStr;
+    nfa.epsilonClosureInfo = epsilonClosureInfo;
 
     return nfa;
   }

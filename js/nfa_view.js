@@ -17,13 +17,33 @@ export class NFAView {
   /**
    * @param {NFA} nfa - The NFA
    * @param {StateTransformation} transform - The transformation to apply
+   * @param {Object} [options] - View options
+   * @param {boolean} [options.hideEpsilonClosure] - Whether to hide epsilon closure artifacts
    */
-  constructor(nfa, transform) {
+  constructor(nfa, transform, options = {}) {
     this.nfa = nfa;
     this.transform = transform;
 
+    // Only allow hiding epsilon closure if we have an identity transform
+    // This simplifies logic by avoiding edge cases with merged/deleted states
+    const isIdentity = this._isIdentityTransform();
+    this.hideEpsilonClosure = isIdentity && !!options.hideEpsilonClosure;
+
     // Compute merged sources once
     this.mergedSources = this._computeMergedSources();
+
+    // Compute dead states once to avoid recomputing on every render
+    this.deadTransform = this.nfa.getDeadStates();
+  }
+
+  /** @private */
+  _isIdentityTransform() {
+    const remap = this.transform.remap;
+    if (remap.length !== this.nfa.numStates()) return false;
+    for (let i = 0; i < remap.length; i++) {
+      if (remap[i] !== i) return false;
+    }
+    return true;
   }
 
   /**
@@ -50,8 +70,6 @@ export class NFAView {
    * @returns {{total: number, start: number, accept: number, live: number, dead: number}}
    */
   getStats() {
-    const deadTransform = this.nfa.getDeadStates();
-
     let total = 0;
     let start = 0;
     let accept = 0;
@@ -61,13 +79,35 @@ export class NFAView {
       // Only count canonical states (where remap[i] === i)
       if (this.transform.remap[i] === i) {
         total++;
-        if (this.nfa.startStates.has(i)) start++;
-        if (this.nfa.acceptStates.has(i)) accept++;
-        if (deadTransform.isDeleted(i)) dead++;
+        if (this.isStart(i)) start++;
+        if (this.isAccepting(i)) accept++;
+        if (this.deadTransform.isDeleted(i)) dead++;
       }
     }
 
     return { total, start, accept, live: total - dead, dead };
+  }
+
+  /**
+   * Check if a state is a start state in this view
+   * @param {number} stateId
+   * @returns {boolean}
+   */
+  isStart(stateId) {
+    if (!this.nfa.startStates.has(stateId)) return false;
+    if (this.hideEpsilonClosure && this.nfa.epsilonClosureInfo?.addedStartStates.has(stateId)) return false;
+    return true;
+  }
+
+  /**
+   * Check if a state is an accepting state in this view
+   * @param {number} stateId
+   * @returns {boolean}
+   */
+  isAccepting(stateId) {
+    if (!this.nfa.acceptStates.has(stateId)) return false;
+    if (this.hideEpsilonClosure && this.nfa.epsilonClosureInfo?.addedAcceptStates.has(stateId)) return false;
+    return true;
   }
 
   /**
@@ -112,10 +152,25 @@ export class NFAView {
       const canonical = this.transform.remap[to];
       if (canonical === -1) continue; // Skip deleted states
 
+      let visibleSymbols = symbols;
+      if (this.hideEpsilonClosure) {
+        // When hiding epsilon closure, transform is identity, so stateId/to are original IDs
+        const addedFrom = this.nfa.epsilonClosureInfo?.addedTransitions.get(stateId);
+        if (addedFrom) {
+          visibleSymbols = symbols.filter(symbol => {
+            const symbolIndex = this.nfa._symbolToIndex.get(symbol);
+            const addedTo = addedFrom.get(symbolIndex);
+            return !addedTo || !addedTo.has(to);
+          });
+        }
+      }
+
+      if (visibleSymbols.length === 0) continue;
+
       if (!byCanonicalTarget.has(canonical)) {
         byCanonicalTarget.set(canonical, new Set());
       }
-      for (const symbol of symbols) {
+      for (const symbol of visibleSymbols) {
         byCanonicalTarget.get(canonical).add(symbol);
       }
     }
@@ -129,5 +184,40 @@ export class NFAView {
       result.set(target, sorted);
     }
     return result;
+  }
+
+  /**
+   * Get state information for visualization
+   */
+  getStateInfo() {
+    return this.nfa._transitions.map((_, id) => ({
+      id,
+      isStart: this.isStart(id),
+      isAccept: this.isAccepting(id),
+      isDead: this.deadTransform.isDeleted(id)
+    }));
+  }
+
+  /**
+   * Get epsilon transitions from a state, mapped through the transform
+   * @param {number} stateId - Canonical state ID
+   * @returns {Set<number>} Set of canonical target states
+   */
+  getEpsilonTransitionsFrom(stateId) {
+    const sources = this.mergedSources.get(stateId) || [stateId];
+    const canonicalTargets = new Set();
+
+    for (const sourceId of sources) {
+      const targets = this.nfa.epsilonTransitions.get(sourceId);
+      if (targets) {
+        for (const target of targets) {
+          const canonical = this.transform.remap[target];
+          if (canonical !== -1) {
+            canonicalTargets.add(canonical);
+          }
+        }
+      }
+    }
+    return canonicalTargets;
   }
 }

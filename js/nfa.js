@@ -136,6 +136,8 @@ export class NFA {
     this.acceptStates = new Set();
     /** @type {Map<number, string>} State ID to label for visualization */
     this.stateLabels = new Map();
+    /** @type {Map<number, Set<number>>} Epsilon transitions: fromState -> Set<toState> */
+    this.epsilonTransitions = new Map();
   }
 
   /** Add a new state, returns its ID */
@@ -178,6 +180,22 @@ export class NFA {
     if (stateTransitions[symbolIndex].includes(toState)) return false;
 
     stateTransitions[symbolIndex].push(toState);
+    return true;
+  }
+
+  /**
+   * Add an epsilon transition from one state to another.
+   * @param {number} fromState
+   * @param {number} toState
+   * @returns {boolean} True if the transition was newly added
+   */
+  addEpsilonTransition(fromState, toState) {
+    if (!this.epsilonTransitions.has(fromState)) {
+      this.epsilonTransitions.set(fromState, new Set());
+    }
+    const targets = this.epsilonTransitions.get(fromState);
+    if (targets.has(toState)) return false;
+    targets.add(toState);
     return true;
   }
 
