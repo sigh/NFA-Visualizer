@@ -11,6 +11,7 @@ import { DEFAULT_SYMBOL_CLASS, StateTransformation } from './nfa.js';
 import { NFABuilder, parseNFAConfig, buildCodeFromSplit, parseSplitFromCode, expandSymbolClass } from './nfa_builder.js';
 import { NFAView } from './nfa_view.js';
 import { NFAVisualizer, compactSymbolLabel } from './visualizer.js';
+import { EXAMPLES } from './examples.js';
 
 // ============================================
 // Configuration
@@ -44,6 +45,7 @@ class App {
     // DOM element references
     this.elements = {
       // Input mode controls
+      examplesSelect: document.getElementById('examples-select'),
       tabSplit: document.getElementById('tab-split'),
       tabUnified: document.getElementById('tab-unified'),
       splitInput: document.getElementById('split-input'),
@@ -151,10 +153,19 @@ class App {
     // Initialize CodeJar editors
     this.initEditors();
 
+    // Populate examples
+    Object.entries(EXAMPLES).forEach(([key, example]) => {
+      const option = document.createElement('option');
+      option.value = key;
+      option.textContent = example.label;
+      this.elements.examplesSelect.appendChild(option);
+    });
+
     // Restore saved inputs from sessionStorage
     this.restoreFromStorage();
 
     // Set up event listeners
+    this.elements.examplesSelect.addEventListener('change', (e) => this.handleExampleSelect(e.target.value));
     this.elements.tabSplit.addEventListener('click', () => this.handleModeToggle('split'));
     this.elements.tabUnified.addEventListener('click', () => this.handleModeToggle('unified'));
     this.elements.buildBtn.addEventListener('click', () => this.handleBuild());
@@ -301,7 +312,22 @@ class App {
     this.hideError();
   }
 
-  // ============================================
+  /**
+   * Handle example selection
+   * @param {string} key - Example key
+   */
+  handleExampleSelect(key) {
+    const example = EXAMPLES[key];
+    if (!example) return;
+
+    this.updateModeUI(true);
+    this.editors.unified.updateCode(example.code);
+    if (example.symbols) this.editors.symbols.updateCode(example.symbols);
+
+    this.saveToStorage();
+    this.handleBuild();
+    this.elements.examplesSelect.value = '';
+  }  // ============================================
   // Build Handler
   // ============================================
 
