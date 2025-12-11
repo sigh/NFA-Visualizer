@@ -88,6 +88,7 @@ class App {
     this.currentNFA = null;
     this.view = null;
     this.visualizer = null;
+    this.pipelineViews = [];
 
     // CodeJar editor instances
     this.editors = {
@@ -315,6 +316,9 @@ class App {
       const builder = new NFABuilder(config, { ...CONFIG, symbols });
       this.currentNFA = builder.build();
 
+      // Precompute views for all pipeline steps
+      this.precomputeViews();
+
       // Update UI
       this.showResults();
 
@@ -391,18 +395,57 @@ class App {
   }
 
   /**
+   * Precompute views for all pipeline steps
+   */
+  precomputeViews() {
+    this.pipelineViews = [];
+    const numStates = this.currentNFA.numStates();
+
+    // Step 0: Raw NFA
+    // Identity transform, show explicit epsilon transitions
+    this.pipelineViews[0] = new NFAView(
+      this.currentNFA,
+      StateTransformation.identity(numStates),
+      { showEpsilonTransitions: true }
+    );
+
+    // Step 1: Epsilon Closure
+    // Identity transform, hide explicit epsilon transitions (implicit closure)
+    this.pipelineViews[1] = new NFAView(
+      this.currentNFA,
+      StateTransformation.identity(numStates),
+      { showEpsilonTransitions: false }
+    );
+
+    // Step 2: Prune States
+    // Hide dead states
+    let transformStep2 = StateTransformation.identity(numStates);
+    const deadTransform = this.currentNFA.getDeadStates();
+    transformStep2 = transformStep2.compose(deadTransform);
+
+    this.pipelineViews[2] = new NFAView(
+      this.currentNFA,
+      transformStep2,
+      { showEpsilonTransitions: false }
+    );
+
+    // Step 3: Merge States
+    // Merge equivalent states (on top of pruned states)
+    const mergeTransform = this.currentNFA.getEquivalentStateRemap(transformStep2);
+
+    this.pipelineViews[3] = new NFAView(
+      this.currentNFA,
+      mergeTransform,
+      { showEpsilonTransitions: false }
+    );
+  }
+
+  /**
    * Create a new NFAView based on the current NFA and slider state
    */
   updateViewFromSlider() {
     const step = parseInt(this.elements.pipelineSlider.value);
-    // In raw state (step 0), we want to SHOW epsilon transitions.
-    const showEpsilon = step === 0;
-
-    // Compute transform based on current pipeline step
-    const transform = this.computeTransform();
-    this.view = new NFAView(this.currentNFA, transform, {
-      showEpsilonTransitions: showEpsilon
-    });
+    this.view = this.pipelineViews[step];
   }
 
   /**
@@ -427,31 +470,6 @@ class App {
     this.updateStatsDisplay();
     this.updateStateList();
     this.updateTestResult();
-  }
-
-  /**
-   * Compute the transform based on current pipeline step
-   * @returns {StateTransformation}
-   */
-  computeTransform() {
-    let transform = StateTransformation.identity(this.currentNFA.numStates());
-    const step = parseInt(this.elements.pipelineSlider.value);
-    const hideDead = step >= 2;
-    const merge = step >= 3;
-
-    // Apply dead state hiding
-    if (hideDead) {
-      const deadTransform = this.currentNFA.getDeadStates();
-      transform = transform.compose(deadTransform);
-    }
-
-    // Apply equivalent state merging
-    if (merge) {
-      const mergeTransform = this.currentNFA.getEquivalentStateRemap(transform);
-      transform = mergeTransform;
-    }
-
-    return transform;
   }
 
   /**

@@ -34,6 +34,18 @@ export class StateTransformation {
   constructor(remap) {
     /** @type {Int32Array} */
     this.remap = remap;
+
+    this._isIdentity = true;
+    // Precompute merged status
+    // mergeCounts[canonicalId] stores how many states map to canonicalId
+    this.mergeCounts = new Int32Array(remap.length).fill(0);
+    for (let i = 0; i < remap.length; i++) {
+      const canonical = remap[i];
+      if (canonical !== i) this._isIdentity = false;
+      if (canonical !== -1) {
+        this.mergeCounts[canonical]++;
+      }
+    }
   }
 
   /**
@@ -93,6 +105,14 @@ export class StateTransformation {
   /** Get the canonical representative for a state (-1 if deleted) */
   getCanonical(stateId) {
     return this.remap[stateId];
+  }
+
+  /**
+   * Check if this is an identity transformation.
+   * @returns {boolean}
+   */
+  isIdentity() {
+    return this._isIdentity;
   }
 
   /**

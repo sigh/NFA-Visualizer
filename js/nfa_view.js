@@ -26,7 +26,7 @@ export class NFAView {
 
     // Only allow showing explicit epsilon transitions if we have an identity transform
     // This simplifies logic by avoiding edge cases with merged/deleted states
-    if (options.showEpsilonTransitions && !this._isIdentityTransform()) {
+    if (options.showEpsilonTransitions && !this.transform.isIdentity()) {
       throw new Error('Cannot show explicit epsilon transitions with a non-identity transform');
     }
     this.showEpsilonTransitions = !!options.showEpsilonTransitions;
@@ -36,16 +36,6 @@ export class NFAView {
 
     // Compute dead states once to avoid recomputing on every render
     this.deadTransform = this.nfa.getDeadStates();
-  }
-
-  /** @private */
-  _isIdentityTransform() {
-    const remap = this.transform.remap;
-    if (remap.length !== this.nfa.numStates()) return false;
-    for (let i = 0; i < remap.length; i++) {
-      if (remap[i] !== i) return false;
-    }
-    return true;
   }
 
   /**
@@ -118,8 +108,7 @@ export class NFAView {
    * @returns {boolean}
    */
   isMergedState(stateId) {
-    const sources = this.mergedSources.get(stateId);
-    return !!sources && sources.length > 1;
+    return this.transform.mergeCounts[stateId] > 1;
   }
 
   /**
@@ -210,20 +199,13 @@ export class NFAView {
    * @returns {Set<number>} Set of canonical target states
    */
   getEpsilonTransitionsFrom(stateId) {
-    const sources = this.mergedSources.get(stateId) || [stateId];
-    const canonicalTargets = new Set();
-
-    for (const sourceId of sources) {
-      const targets = this.nfa.epsilonTransitions.get(sourceId);
-      if (targets) {
-        for (const target of targets) {
-          const canonical = this.transform.remap[target];
-          if (canonical !== -1) {
-            canonicalTargets.add(canonical);
-          }
-        }
-      }
+    if (!this.showEpsilonTransitions) {
+      return new Set();
     }
-    return canonicalTargets;
+
+    // Since showEpsilonTransitions requires an identity transform,
+    // we don't need to handle merged states or remapping.
+    // stateId is the original state ID.
+    return this.nfa.epsilonTransitions.get(stateId) || new Set();
   }
 }
