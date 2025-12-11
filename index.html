@@ -28,13 +28,14 @@
     <section class="panel panel-config" id="panel-config">
       <div class="panel-header">
         <h2>Configuration</h2>
-        <label class="toggle-label">
-          <input type="checkbox" id="unified-toggle">
-          <span>Unified code</span>
-        </label>
       </div>
 
       <div class="input-section">
+        <div class="config-tabs">
+          <button class="config-tab active" id="tab-split" data-mode="split">Split Code</button>
+          <button class="config-tab" id="tab-unified" data-mode="unified">Unified Code</button>
+        </div>
+
         <div class="code-block code-block-inline">
           <code class="code-line code-decoration language-javascript">// Symbols to explore.</code>
           <code class="code-line code-decoration language-javascript">// (regex character class syntax)</code>

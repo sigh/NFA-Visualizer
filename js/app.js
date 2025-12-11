@@ -44,7 +44,8 @@ class App {
     // DOM element references
     this.elements = {
       // Input mode controls
-      unifiedToggle: document.getElementById('unified-toggle'),
+      tabSplit: document.getElementById('tab-split'),
+      tabUnified: document.getElementById('tab-unified'),
       splitInput: document.getElementById('split-input'),
       unifiedInput: document.getElementById('unified-input'),
 
@@ -154,7 +155,8 @@ class App {
     this.restoreFromStorage();
 
     // Set up event listeners
-    this.elements.unifiedToggle.addEventListener('change', () => this.handleModeToggle());
+    this.elements.tabSplit.addEventListener('click', () => this.handleModeToggle('split'));
+    this.elements.tabUnified.addEventListener('click', () => this.handleModeToggle('unified'));
     this.elements.buildBtn.addEventListener('click', () => this.handleBuild());
 
     // Auto-update test on input change
@@ -219,7 +221,7 @@ class App {
     sessionStorage.setItem(STORAGE_KEYS.accept, this.editors.accept.toString());
     sessionStorage.setItem(STORAGE_KEYS.epsilon, this.editors.epsilon.toString());
     sessionStorage.setItem(STORAGE_KEYS.unified, this.editors.unified.toString());
-    sessionStorage.setItem(STORAGE_KEYS.unifiedMode, this.elements.unifiedToggle.checked);
+    sessionStorage.setItem(STORAGE_KEYS.unifiedMode, this.elements.tabUnified.classList.contains('active'));
     sessionStorage.setItem(STORAGE_KEYS.testInput, this.elements.testInput.value);
   }
 
@@ -245,11 +247,19 @@ class App {
     if (testInput !== null) this.elements.testInput.value = testInput;
 
     // Restore mode toggle state
-    if (unifiedMode === 'true') {
-      this.elements.unifiedToggle.checked = true;
-      this.elements.splitInput.classList.add('hidden');
-      this.elements.unifiedInput.classList.remove('hidden');
-    }
+    const isUnified = unifiedMode === 'true';
+    this.updateModeUI(isUnified);
+  }
+
+  /**
+   * Update UI elements for the selected mode
+   * @param {boolean} isUnified
+   */
+  updateModeUI(isUnified) {
+    this.elements.tabUnified.classList.toggle('active', isUnified);
+    this.elements.tabSplit.classList.toggle('active', !isUnified);
+    this.elements.unifiedInput.classList.toggle('hidden', !isUnified);
+    this.elements.splitInput.classList.toggle('hidden', isUnified);
   }
 
   // ============================================
@@ -259,9 +269,15 @@ class App {
   /**
    * Toggle between split and unified input modes,
    * converting code between formats.
+   * @param {string} mode - 'split' or 'unified'
    */
-  handleModeToggle() {
-    const isUnified = this.elements.unifiedToggle.checked;
+  handleModeToggle(mode) {
+    const isUnified = mode === 'unified';
+    const currentIsUnified = this.elements.tabUnified.classList.contains('active');
+
+    if (isUnified === currentIsUnified) return;
+
+    this.updateModeUI(isUnified);
 
     if (isUnified) {
       // Convert split inputs to unified code
@@ -272,9 +288,6 @@ class App {
         this.editors.epsilon.toString()
       );
       this.editors.unified.updateCode(code);
-
-      this.elements.splitInput.classList.add('hidden');
-      this.elements.unifiedInput.classList.remove('hidden');
     } else {
       // Parse unified code back to split inputs
       const parts = parseSplitFromCode(this.editors.unified.toString());
@@ -282,9 +295,6 @@ class App {
       this.editors.transition.updateCode(parts.transitionBody);
       this.editors.accept.updateCode(parts.acceptBody);
       this.editors.epsilon.updateCode(parts.epsilonBody);
-
-      this.elements.unifiedInput.classList.add('hidden');
-      this.elements.splitInput.classList.remove('hidden');
     }
 
     this.saveToStorage();
@@ -333,7 +343,7 @@ class App {
    * Get the current code from either split or unified mode
    */
   getCurrentCode() {
-    if (this.elements.unifiedToggle.checked) {
+    if (this.elements.tabUnified.classList.contains('active')) {
       return this.editors.unified.toString();
     }
 
