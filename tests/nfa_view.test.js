@@ -326,4 +326,56 @@ describe('NFAView', () => {
       assert.deepStrictEqual(transitions.get(0), ['a']);
     });
   });
+
+  describe('isDeterministic()', () => {
+    test('returns true for deterministic machine', () => {
+      const nfa = createTestNFA(['a', 'b']);
+      nfa.addState(); // q0
+      nfa.addState(); // q1
+      nfa.addStart(0);
+      nfa.addTransition(0, 1, 0); // q0 --a--> q1
+      const transform = StateTransformation.identity(2);
+      const view = new NFAView(nfa, transform);
+
+      assert.strictEqual(view.isDeterministic(), true);
+    });
+
+    test('returns false for multiple transitions on same symbol', () => {
+      const nfa = createTestNFA(['a', 'b']);
+      nfa.addState(); // q0
+      nfa.addState(); // q1
+      nfa.addState(); // q2
+      nfa.addStart(0);
+      nfa.addTransition(0, 1, 0); // q0 --a--> q1
+      nfa.addTransition(0, 2, 0); // q0 --a--> q2
+      const transform = StateTransformation.identity(3);
+      const view = new NFAView(nfa, transform);
+
+      assert.strictEqual(view.isDeterministic(), false);
+    });
+
+    test('returns false for multiple start states', () => {
+      const nfa = createTestNFA(['a', 'b']);
+      nfa.addState(); // q0
+      nfa.addState(); // q1
+      nfa.addStart(0);
+      nfa.addStart(1);
+      const transform = StateTransformation.identity(2);
+      const view = new NFAView(nfa, transform);
+
+      assert.strictEqual(view.isDeterministic(), false);
+    });
+
+    test('returns false if epsilon transitions exist (when shown)', () => {
+      const nfa = createTestNFA(['a', 'b']);
+      nfa.addState(); // q0
+      nfa.addState(); // q1
+      nfa.addStart(0);
+      nfa.addEpsilonTransition(0, 1);
+      const transform = StateTransformation.identity(2);
+      const view = new NFAView(nfa, transform, { showEpsilonTransitions: true });
+
+      assert.strictEqual(view.isDeterministic(), false);
+    });
+  });
 });

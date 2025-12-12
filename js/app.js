@@ -7,7 +7,7 @@
  */
 
 import { CodeJar } from '../lib/codejar.min.js';
-import { DEFAULT_SYMBOL_CLASS, StateTransformation } from './nfa.js';
+import { StateTransformation } from './nfa.js';
 import { NFABuilder, parseNFAConfig, buildCodeFromSplit, parseSplitFromCode, expandSymbolClass } from './nfa_builder.js';
 import { NFAView } from './nfa_view.js';
 import { NFAVisualizer, compactSymbolLabel } from './visualizer.js';
@@ -78,6 +78,7 @@ class App {
 
       // Stats
       statStates: document.getElementById('stat-states'),
+      statType: document.getElementById('stat-type'),
       statStart: document.getElementById('stat-start'),
       statAccept: document.getElementById('stat-accept'),
       statLive: document.getElementById('stat-live'),
@@ -524,6 +525,27 @@ class App {
     const stats = this.view.getStats();
 
     this.elements.statStates.textContent = stats.total;
+
+    // Determine machine type
+    let type = 'NFA';
+    const isDeterministic = this.view.isDeterministic();
+    const hasEpsilons = this.view.showEpsilonTransitions && this.view.nfa.epsilonTransitions.size > 0;
+
+    if (hasEpsilons) {
+      type = 'ε-NFA';
+    } else if (isDeterministic) {
+      const minStates = this.pipelineViews[3].getStats().total;
+      if (stats.total === minStates) {
+        type = 'Min-DFA';
+      } else {
+        type = 'DFA';
+      }
+    } else {
+      type = 'NFA';
+    }
+
+    this.elements.statType.textContent = type;
+
     this.elements.statStart.textContent = stats.start;
     this.elements.statAccept.textContent = stats.accept;
     this.elements.statLive.textContent = stats.live;
@@ -739,6 +761,7 @@ class App {
   hideResults() {
     this.elements.emptyState.classList.remove('hidden');
     this.elements.statStates.textContent = '—';
+    this.elements.statType.textContent = '';
     this.elements.statStart.textContent = '—';
     this.elements.statAccept.textContent = '—';
     this.elements.statLive.textContent = '—';

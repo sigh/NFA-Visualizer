@@ -130,6 +130,34 @@ export class NFAView {
   }
 
   /**
+   * Check if the machine in this view is deterministic (at most one transition per symbol)
+   * @returns {boolean}
+   */
+  isDeterministic() {
+    // If showing explicit epsilon transitions, check if any exist
+    if (this.showEpsilonTransitions && this.nfa.epsilonTransitions.size > 0) {
+      return false;
+    }
+
+    let seenStart = false;
+    for (const stateId of this.mergedSources.keys()) {
+      if (this.isStart(stateId)) {
+        if (seenStart) return false;
+        seenStart = true;
+      }
+
+      const seenSymbols = new Set();
+      for (const symbols of this.getTransitionsFrom(stateId).values()) {
+        for (const symbol of symbols) {
+          if (seenSymbols.has(symbol)) return false;
+          seenSymbols.add(symbol);
+        }
+      }
+    }
+    return true;
+  }
+
+  /**
    * Get transitions from a state, mapped through the transform
    * @param {number} stateId - State ID
    * @returns {Map<number, string[]>} Map of canonical target -> sorted symbols

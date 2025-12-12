@@ -350,10 +350,15 @@ header {
   color: var(--color-text-secondary);
 }
 
+.stat-type,
 .stat-value {
   font-weight: 600;
   font-family: var(--font-mono);
   color: var(--color-text);
+
+  &:empty::before {
+    content: '-';
+  }
 }
 
 .stat-value-dead {
