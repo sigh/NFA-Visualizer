@@ -33,9 +33,6 @@ export class NFAView {
 
     // Compute merged sources once
     this.mergedSources = this._computeMergedSources();
-
-    // Compute dead states once to avoid recomputing on every render
-    this.deadTransform = this.nfa.getDeadStates();
   }
 
   /**
@@ -67,13 +64,15 @@ export class NFAView {
     let accept = 0;
     let dead = 0;
 
+    const deadTransform = this.nfa.getDeadStates();
+
     for (let i = 0; i < this.transform.remap.length; i++) {
       // Only count canonical states (where remap[i] === i)
       if (this.transform.remap[i] === i) {
         total++;
         if (this.isStart(i)) start++;
         if (this.isAccepting(i)) accept++;
-        if (this.deadTransform.isDeleted(i)) dead++;
+        if (deadTransform.isDeleted(i)) dead++;
       }
     }
 
@@ -108,7 +107,8 @@ export class NFAView {
    * @returns {boolean}
    */
   isMergedState(stateId) {
-    return this.transform.mergeCounts[stateId] > 1;
+    const sources = this.mergedSources.get(stateId);
+    return !!sources && sources.length > 1;
   }
 
   /**
@@ -183,11 +183,12 @@ export class NFAView {
    * Get state information for visualization
    */
   getStateInfo() {
+    const deadTransform = this.nfa.getDeadStates();
     return this.nfa._transitions.map((_, id) => ({
       id,
       isStart: this.isStart(id),
       isAccept: this.isAccepting(id),
-      isDead: this.deadTransform.isDeleted(id)
+      isDead: deadTransform.isDeleted(id)
         // In Raw NFA mode, all start states should be live.
         && (!this.showEpsilonTransitions || !this.isStart(id))
     }));

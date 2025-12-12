@@ -36,14 +36,11 @@ export class StateTransformation {
     this.remap = remap;
 
     this._isIdentity = true;
-    // Precompute merged status
-    // mergeCounts[canonicalId] stores how many states map to canonicalId
-    this.mergeCounts = new Int32Array(remap.length).fill(0);
     for (let i = 0; i < remap.length; i++) {
       const canonical = remap[i];
-      if (canonical !== i) this._isIdentity = false;
-      if (canonical !== -1) {
-        this.mergeCounts[canonical]++;
+      if (canonical !== i) {
+        this._isIdentity = false;
+        break;
       }
     }
   }
@@ -158,10 +155,14 @@ export class NFA {
     this.stateLabels = new Map();
     /** @type {Map<number, Set<number>>} Epsilon transitions: fromState -> Set<toState> */
     this.epsilonTransitions = new Map();
+
+    /** @type {StateTransformation|null} Cached dead states transformation */
+    this._deadStatesCache = null;
   }
 
   /** Add a new state, returns its ID */
   addState(accepting = false) {
+    this._deadStatesCache = null;
     const id = this._transitions.length;
     this._transitions.push([]);
     if (accepting) this.acceptStates.add(id);
@@ -173,6 +174,7 @@ export class NFA {
   */
   addStart(stateId) {
     if (this.startStates.has(stateId)) return false;
+    this._deadStatesCache = null;
     this.startStates.add(stateId);
     return true;
   }
@@ -182,6 +184,7 @@ export class NFA {
   */
   addAccept(stateId) {
     if (this.acceptStates.has(stateId)) return false;
+    this._deadStatesCache = null;
     this.acceptStates.add(stateId);
     return true;
   }
@@ -199,6 +202,7 @@ export class NFA {
     // Avoid duplicates
     if (stateTransitions[symbolIndex].includes(toState)) return false;
 
+    this._deadStatesCache = null;
     stateTransitions[symbolIndex].push(toState);
     return true;
   }
@@ -215,6 +219,7 @@ export class NFA {
     }
     const targets = this.epsilonTransitions.get(fromState);
     if (targets.has(toState)) return false;
+    this._deadStatesCache = null;
     targets.add(toState);
     return true;
   }
@@ -392,8 +397,13 @@ export class NFA {
    * @returns {StateTransformation} Transformation that deletes dead states
    */
   getDeadStates() {
+    if (this._deadStatesCache) return this._deadStatesCache;
+
     const numStates = this._transitions.length;
-    if (numStates === 0) return StateTransformation.identity(0);
+    if (numStates === 0) {
+      this._deadStatesCache = StateTransformation.identity(0);
+      return this._deadStatesCache;
+    }
 
     // In the reversed NFA, states reachable from start (= original accept)
     // are exactly those that can reach accept in the original
@@ -407,7 +417,8 @@ export class NFA {
       }
     }
 
-    return StateTransformation.deletion(numStates, deadStates);
+    this._deadStatesCache = StateTransformation.deletion(numStates, deadStates);
+    return this._deadStatesCache;
   }
 
   /**
