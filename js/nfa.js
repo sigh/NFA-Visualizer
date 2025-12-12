@@ -160,6 +160,15 @@ export class NFA {
     this._deadStatesCache = null;
   }
 
+  /**
+   * Check if a symbol is in the NFA's alphabet
+   * @param {string} symbol
+   * @returns {boolean}
+   */
+  hasSymbol(symbol) {
+    return this._symbolToIndex.has(symbol);
+  }
+
   /** Add a new state, returns its ID */
   addState(accepting = false) {
     this._deadStatesCache = null;

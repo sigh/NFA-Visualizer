@@ -165,6 +165,20 @@ describe('NFA', () => {
     });
   });
 
+  describe('hasSymbol()', () => {
+    test('returns true for existing symbols', () => {
+      const nfa = new NFA(['a', 'b']);
+      assert.strictEqual(nfa.hasSymbol('a'), true);
+      assert.strictEqual(nfa.hasSymbol('b'), true);
+    });
+
+    test('returns false for non-existing symbols', () => {
+      const nfa = new NFA(['a', 'b']);
+      assert.strictEqual(nfa.hasSymbol('c'), false);
+      assert.strictEqual(nfa.hasSymbol('1'), false);
+    });
+  });
+
   describe('addState()', () => {
     test('adds non-accepting state', () => {
       const nfa = new NFA(['a']);

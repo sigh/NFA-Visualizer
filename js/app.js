@@ -302,6 +302,7 @@ class App {
     if (mode === 'unified') {
       // Convert split inputs to unified code
       const code = buildCodeFromSplit(
+        this.editors.symbols.toString() || '1-9',
         this.editors.startState.toString() || '"start"',
         this.editors.transition.toString() || 'return undefined;',
         this.editors.accept.toString() || 'return false;',
@@ -311,6 +312,7 @@ class App {
     } else {
       // Parse unified code back to split inputs
       const parts = parseSplitFromCode(this.editors.unified.toString());
+      this.editors.symbols.updateCode(parts.symbols);
       this.editors.startState.updateCode(parts.startState);
       this.editors.transition.updateCode(parts.transitionBody);
       this.editors.accept.updateCode(parts.acceptBody);
@@ -353,12 +355,9 @@ class App {
       // Parse and validate
       const config = parseNFAConfig(code);
 
-      // Expand symbol class to array of symbols
-      const symbolClass = this.editors.symbols.toString().trim() || DEFAULT_SYMBOL_CLASS;
-      const symbols = expandSymbolClass(symbolClass);
-
       // Build NFA
-      const builder = new NFABuilder(config, { ...CONFIG, symbols });
+      // symbols is already expanded to an array by parseNFAConfig
+      const builder = new NFABuilder(config, { ...CONFIG, symbols: config.symbols });
       this.currentNFA = builder.build();
 
       // Precompute views for all pipeline steps
@@ -383,6 +382,7 @@ class App {
     }
 
     return buildCodeFromSplit(
+      this.editors.symbols.toString() || '1-9',
       this.editors.startState.toString() || '"start"',
       this.editors.transition.toString() || 'return undefined;',
       this.editors.accept.toString() || 'return false;',
@@ -765,6 +765,23 @@ class App {
 
     try {
       const sequence = this.parseInputSequence(inputStr);
+
+      // Check for invalid symbols
+      const invalidSymbols = new Set();
+      for (const step of sequence) {
+        for (const symbol of step) {
+          if (!this.currentNFA.hasSymbol(symbol)) {
+            invalidSymbols.add(symbol);
+          }
+        }
+      }
+
+      if (invalidSymbols.size > 0) {
+        this.showTestResult("✗ Invalid", false);
+        this.visualizer.clearHighlight();
+        return;
+      }
+
       const result = this.currentNFA.run(sequence);
 
       this.displayTestResult(result, sequence);

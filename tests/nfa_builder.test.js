@@ -6,11 +6,79 @@ import { test, describe, assert } from './test_utils.js';
 import {
   NFABuilder,
   expandSymbolClass,
+  expandSymbolRegex,
   parseNFAConfig,
   buildCodeFromSplit,
   parseSplitFromCode
 } from '../js/nfa_builder.js';
-import { NFA, DEFAULT_SYMBOL_CLASS } from '../js/nfa.js';
+import { NFA } from '../js/nfa.js';
+
+// =============================================================================
+// expandSymbolRegex Tests
+// =============================================================================
+
+describe('expandSymbolRegex', () => {
+  test('expands simple regex', () => {
+    const result = expandSymbolRegex(/[0-2]/);
+    assert.deepStrictEqual(result, ['0', '1', '2']);
+  });
+
+  test('handles global flag', () => {
+    const result = expandSymbolRegex(/[0-2]/g);
+    assert.deepStrictEqual(result, ['0', '1', '2']);
+  });
+
+  test('handles case insensitive flag', () => {
+    // 'a' and 'A' are in ALL_SYMBOLS
+    const result = expandSymbolRegex(/a/i);
+    assert(result.includes('a'));
+    assert(result.includes('A'));
+  });
+
+  test('matches all symbols', () => {
+    const result = expandSymbolRegex(/./);
+    // ALL_SYMBOLS length check or check a few
+    assert(result.length > 50);
+    assert(result.includes('0'));
+    assert(result.includes('z'));
+    assert(result.includes('!'));
+  });
+
+  test('matches special characters', () => {
+    const result = expandSymbolRegex(/[+\-*]/);
+    assert(result.includes('+'));
+    assert(result.includes('-'));
+    assert(result.includes('*'));
+  });
+
+  test('throws on no matches', () => {
+    assert.throws(() => expandSymbolRegex(/~/), /No symbols match/);
+  });
+
+  test('throws on empty match (if regex matches nothing)', () => {
+    // A regex that matches nothing
+    assert.throws(() => expandSymbolRegex(/(?!)/), /No symbols match/);
+  });
+
+  test('handles regex matching empty string (pathological)', () => {
+    // This technically matches empty strings between characters
+    // The current implementation returns them.
+    // We just verify it doesn't crash.
+    const result = expandSymbolRegex(/(?:)/);
+    assert(Array.isArray(result));
+    assert(result.length > 0);
+  });
+
+  test('throws if regex matches multiple characters', () => {
+    // 'abc' is a substring of ALL_SYMBOLS, so /abc/ matches "abc"
+    assert.throws(() => expandSymbolRegex(/abc/), /matched a string of length > 1/);
+  });
+
+  test('throws if regex matches multiple characters (greedy)', () => {
+    // /[a-z]+/ matches the whole alphabet string
+    assert.throws(() => expandSymbolRegex(/[a-z]+/), /matched a string of length > 1/);
+  });
+});
 
 // =============================================================================
 // expandSymbolClass Tests
@@ -81,6 +149,7 @@ describe('expandSymbolClass', () => {
 describe('parseNFAConfig', () => {
   test('parses valid code with all definitions', () => {
     const code = `
+      symbols = /[0-9]/;
       startState = 0;
       function transition(state, symbol) { return state + 1; }
       function accept(state) { return state > 5; }
@@ -89,10 +158,12 @@ describe('parseNFAConfig', () => {
     assert.strictEqual(config.startState, 0);
     assert.strictEqual(typeof config.transition, 'function');
     assert.strictEqual(typeof config.accept, 'function');
+    assert.deepStrictEqual(config.symbols, ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
   });
 
   test('parses complex startState', () => {
     const code = `
+      symbols = /[0-9]/;
       startState = { count: 0, flag: true };
       function transition(state, symbol) { return state; }
       function accept(state) { return false; }
@@ -103,6 +174,7 @@ describe('parseNFAConfig', () => {
 
   test('parses array startState', () => {
     const code = `
+      symbols = /[0-9]/;
       startState = [1, 2, 3];
       function transition(state, symbol) { return state; }
       function accept(state) { return false; }
@@ -113,6 +185,7 @@ describe('parseNFAConfig', () => {
 
   test('throws on missing startState', () => {
     const code = `
+      symbols = /[0-9]/;
       function transition(state, symbol) { return state; }
       function accept(state) { return false; }
     `;
@@ -121,6 +194,7 @@ describe('parseNFAConfig', () => {
 
   test('throws on missing transition function', () => {
     const code = `
+      symbols = /[0-9]/;
       startState = 0;
       function accept(state) { return false; }
     `;
@@ -129,10 +203,20 @@ describe('parseNFAConfig', () => {
 
   test('throws on missing accept function', () => {
     const code = `
+      symbols = /[0-9]/;
       startState = 0;
       function transition(state, symbol) { return state; }
     `;
     assert.throws(() => parseNFAConfig(code), /Code error.*accept/);
+  });
+
+  test('throws on missing symbols', () => {
+    const code = `
+      startState = 0;
+      function transition(state, symbol) { return state; }
+      function accept(state) { return false; }
+    `;
+    assert.throws(() => parseNFAConfig(code), /Code error.*symbols/);
   });
 
   test('throws on syntax error', () => {
@@ -149,7 +233,8 @@ describe('parseNFAConfig', () => {
 
 describe('buildCodeFromSplit', () => {
   test('builds code from split components', () => {
-    const code = buildCodeFromSplit('0', 'return state + 1;', 'return state > 5;');
+    const code = buildCodeFromSplit('0-9', '0', 'return state + 1;', 'return state > 5;');
+    assert(code.includes('symbols = /[0-9]/;'));
     assert(code.includes('startState = 0;'));
     assert(code.includes('function transition(state, symbol)'));
     assert(code.includes('function accept(state)'));
@@ -157,24 +242,25 @@ describe('buildCodeFromSplit', () => {
 
   test('properly indents multiline bodies', () => {
     const transitionBody = 'if (symbol === 0) {\n  return 1;\n}\nreturn 0;';
-    const code = buildCodeFromSplit('0', transitionBody, 'return true;');
+    const code = buildCodeFromSplit('0-9', '0', transitionBody, 'return true;');
     // Each line should be indented
     assert(code.includes('  if (symbol === 0)'));
   });
 
   test('handles complex startState expressions', () => {
-    const code = buildCodeFromSplit('{ x: 1, y: 2 }', 'return state;', 'return true;');
+    const code = buildCodeFromSplit('0-9', '{ x: 1, y: 2 }', 'return state;', 'return true;');
     assert(code.includes('startState = { x: 1, y: 2 };'));
   });
 
   test('generated code is parseable', () => {
-    const code = buildCodeFromSplit('42', 'return state;', 'return state === 42;');
+    const code = buildCodeFromSplit('0-9', '42', 'return state;', 'return state === 42;');
     const config = parseNFAConfig(code);
     assert.strictEqual(config.startState, 42);
+    assert.deepStrictEqual(config.symbols, ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']);
   });
 
   test('includes epsilon function when provided', () => {
-    const code = buildCodeFromSplit('0', 'return state + 1;', 'return false;', 'return state === 0 ? 1 : undefined;');
+    const code = buildCodeFromSplit('0-9', '0', 'return state + 1;', 'return false;', 'return state === 0 ? 1 : undefined;');
     assert(code.includes('function epsilon(state)'));
     assert(code.includes('return state === 0 ? 1 : undefined;'));
     const config = parseNFAConfig(code);
@@ -182,12 +268,12 @@ describe('buildCodeFromSplit', () => {
   });
 
   test('omits epsilon function when body is empty', () => {
-    const code = buildCodeFromSplit('0', 'return state;', 'return false;', '');
+    const code = buildCodeFromSplit('0-9', '0', 'return state;', 'return false;', '');
     assert(!code.includes('function epsilon'));
   });
 
   test('omits epsilon function when body is whitespace only', () => {
-    const code = buildCodeFromSplit('0', 'return state;', 'return false;', '   ');
+    const code = buildCodeFromSplit('0-9', '0', 'return state;', 'return false;', '   ');
     assert(!code.includes('function epsilon'));
   });
 });
@@ -199,6 +285,7 @@ describe('buildCodeFromSplit', () => {
 describe('parseSplitFromCode', () => {
   test('extracts components from valid code', () => {
     const code = `
+      symbols = /[0-9]/;
       startState = 5;
       function transition(state, symbol) {
         return state + symbol;
@@ -208,6 +295,7 @@ describe('parseSplitFromCode', () => {
       }
     `;
     const split = parseSplitFromCode(code);
+    assert.strictEqual(split.symbols, '0-9');
     assert.strictEqual(split.startState, '5');
     assert(split.transitionBody.includes('return state + symbol'));
     assert(split.acceptBody.includes('return state > 10'));
@@ -215,6 +303,7 @@ describe('parseSplitFromCode', () => {
 
   test('handles object startState', () => {
     const code = `
+      symbols = /[0-9]/;
       startState = { a: 1 };
       function transition(state, symbol) { return state; }
       function accept(state) { return false; }
@@ -226,25 +315,27 @@ describe('parseSplitFromCode', () => {
   test('returns empty strings on invalid code', () => {
     const code = 'this is not valid javascript {{{';
     const split = parseSplitFromCode(code);
-    assert.strictEqual(split.startState, '');
-    assert.strictEqual(split.transitionBody, '');
-    assert.strictEqual(split.acceptBody, '');
+    assert.strictEqual(split.startState, '0'); // Default fallback
+    assert.strictEqual(split.transitionBody, 'return undefined;'); // Default fallback
+    assert.strictEqual(split.acceptBody, 'return false;'); // Default fallback
     assert.strictEqual(split.epsilonBody, '');
   });
 
   test('round-trips with buildCodeFromSplit', () => {
-    const original = buildCodeFromSplit('100', 'return state;', 'return state === 100;');
+    const original = buildCodeFromSplit('0-9', '100', 'return state;', 'return state === 100;');
     const split = parseSplitFromCode(original);
-    const rebuilt = buildCodeFromSplit(split.startState, split.transitionBody, split.acceptBody);
+    const rebuilt = buildCodeFromSplit(split.symbols, split.startState, split.transitionBody, split.acceptBody);
 
     // Both should produce equivalent configs
     const config1 = parseNFAConfig(original);
     const config2 = parseNFAConfig(rebuilt);
     assert.strictEqual(config1.startState, config2.startState);
+    assert.deepStrictEqual(config1.symbols, config2.symbols);
   });
 
   test('extracts epsilon function when present', () => {
     const code = `
+      symbols = /[0-9]/;
       startState = 0;
       function transition(state, symbol) { return state + 1; }
       function accept(state) { return state > 5; }
@@ -256,6 +347,7 @@ describe('parseSplitFromCode', () => {
 
   test('returns empty epsilonBody when epsilon not present', () => {
     const code = `
+      symbols = /[0-9]/;
       startState = 0;
       function transition(state, symbol) { return state; }
       function accept(state) { return false; }
@@ -265,9 +357,9 @@ describe('parseSplitFromCode', () => {
   });
 
   test('round-trips with epsilon', () => {
-    const original = buildCodeFromSplit('0', 'return state + 1;', 'return false;', 'return state === 0 ? 1 : undefined;');
+    const original = buildCodeFromSplit('0-9', '0', 'return state + 1;', 'return false;', 'return state === 0 ? 1 : undefined;');
     const split = parseSplitFromCode(original);
-    const rebuilt = buildCodeFromSplit(split.startState, split.transitionBody, split.acceptBody, split.epsilonBody);
+    const rebuilt = buildCodeFromSplit(split.symbols, split.startState, split.transitionBody, split.acceptBody, split.epsilonBody);
 
     const config1 = parseNFAConfig(original);
     const config2 = parseNFAConfig(rebuilt);
@@ -420,6 +512,7 @@ describe('NFABuilder', () => {
 describe('Integration', () => {
   test('full workflow: code -> config -> NFA -> run', () => {
     const code = `
+      symbols = /[x]/;
       startState = 0;
       function transition(state, symbol) {
         if (state < 3) return state + 1;
@@ -447,7 +540,7 @@ describe('Integration', () => {
     const transitionBody = 'return { position: state.position + 1 };';
     const acceptBody = 'return state.position >= 3;';
 
-    const code = buildCodeFromSplit(startState, transitionBody, acceptBody);
+    const code = buildCodeFromSplit('x', startState, transitionBody, acceptBody);
     const config = parseNFAConfig(code);
 
     assert.deepStrictEqual(config.startState, { position: 0 });
@@ -490,6 +583,7 @@ describe('Integration', () => {
 describe('epsilon transitions', () => {
   test('parseNFAConfig accepts optional epsilon function', () => {
     const code = `
+      symbols = /[0-9]/;
       startState = 0;
       function transition(state, symbol) { return state + 1; }
       function accept(state) { return state > 5; }
@@ -501,6 +595,7 @@ describe('epsilon transitions', () => {
 
   test('parseNFAConfig works without epsilon function', () => {
     const code = `
+      symbols = /[0-9]/;
       startState = 0;
       function transition(state, symbol) { return state + 1; }
       function accept(state) { return state > 5; }
@@ -511,6 +606,7 @@ describe('epsilon transitions', () => {
 
   test('parseNFAConfig throws if epsilon is not a function', () => {
     const code = `
+      symbols = /[0-9]/;
       startState = 0;
       function transition(state, symbol) { return state + 1; }
       function accept(state) { return state > 5; }

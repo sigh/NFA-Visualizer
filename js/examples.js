@@ -5,9 +5,9 @@
 const RAW_EXAMPLES = {
   'divisible-by-3': {
     label: 'Divisible by 3',
-    symbols: '0-9',
     fn: function () {
       // Numbers divisible by 3
+      symbols = /[0-9]/;
 
       // State represents remainder mod 3
       startState = 0;
@@ -24,10 +24,10 @@ const RAW_EXAMPLES = {
   },
   'third-from-last-1': {
     label: 'Third from last is "1"',
-    symbols: '01',
     fn: function () {
       // Accept any binary string where the third character from the end is "1".
       // Non-determinism is used to guess that each "1" is the third from last.
+      symbols = /[01]/;
 
       // State is either "start" or the distance a "1" is from the end.
       startState = 'start';
@@ -49,7 +49,6 @@ const RAW_EXAMPLES = {
   },
   'river-crossing': {
     label: 'River crossing puzzle',
-    symbols: 'WGC_',
     fn: function () {
       // The classic river crossing puzzle:
       // A farmer needs to transport a wolf (W), a goat (G),
@@ -58,6 +57,7 @@ const RAW_EXAMPLES = {
       // If left alone together, the wolf will eat the goat,
       // or the goat will eat the cabbage.
       // Find a sequence of crossings that gets all safely across.
+      symbols = /[WGC_]/;
 
       // Start with everyone on the left bank.
       startState = { boat: 0, W: 0, G: 0, C: 0 };
@@ -123,7 +123,6 @@ export const EXAMPLES = Object.fromEntries(
     key,
     {
       label: ex.label,
-      symbols: ex.symbols,
       code: extractBody(ex.fn)
     }
   ])

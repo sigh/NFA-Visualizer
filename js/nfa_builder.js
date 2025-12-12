@@ -347,6 +347,32 @@ export class NFABuilder {
 // ============================================
 
 /**
+ * Expand a RegExp into an array of matching symbols from ALL_SYMBOLS.
+ *
+ * @param {RegExp} regex - The regex to match against ALL_SYMBOLS
+ * @returns {string[]} Array of matching symbol strings
+ * @throws {Error} If no symbols match
+ */
+export function expandSymbolRegex(regex) {
+  // Ensure global flag is set so we get all matches
+  const globalRegex = regex.global ? regex : new RegExp(regex.source, regex.flags + 'g');
+
+  const matches = ALL_SYMBOLS.match(globalRegex);
+
+  if (!matches || matches.length === 0) {
+    throw new Error(`No symbols match the pattern ${regex}`);
+  }
+
+  // Ensure all matches are single characters
+  const multiChar = matches.find(m => m.length > 1);
+  if (multiChar) {
+    throw new Error(`Regex ${regex} matched a string of length > 1 ("${multiChar}"). Symbols must be single characters.`);
+  }
+
+  return matches;
+}
+
+/**
  * Expand a regex character class pattern into an array of matching symbols.
  * Uses JavaScript's regex engine to extract matching characters from ALL_SYMBOLS.
  *
@@ -361,13 +387,7 @@ export function expandSymbolClass(charClass) {
 
   try {
     const regex = new RegExp(`[${charClass}]`, 'g');
-    const matches = ALL_SYMBOLS.match(regex);
-
-    if (!matches || matches.length === 0) {
-      throw new Error(`No symbols match the pattern [${charClass}]`);
-    }
-
-    return matches;
+    return expandSymbolRegex(regex);
   } catch (e) {
     if (e.message.includes('No symbols match')) throw e;
     throw new Error(`Invalid character class pattern: ${e.message}`);
@@ -382,22 +402,23 @@ export function expandSymbolClass(charClass) {
  * Parse and compile user-provided JavaScript code into an NFA config object.
  *
  * The code should define:
+ * - symbols: regex character class string or RegExp
  * - startState: initial state value
  * - transition(state, symbol): returns next state(s)
  * - accept(state): returns true if accepting
  * - epsilon(state): (optional) returns epsilon-reachable state(s)
  *
  * @param {string} code - User's JavaScript code
- * @returns {{startState: any, transition: Function, accept: Function, epsilon?: Function}}
+ * @returns {{symbols: string[], startState: any, transition: Function, accept: Function, epsilon?: Function}}
  * @throws {Error} If code is invalid or missing required definitions
  */
 export function parseNFAConfig(code) {
   // Wrap code in IIFE to isolate scope and prevent global pollution
   const wrappedCode = `
     return (function() {
-      var startState, transition, accept, epsilon;
+      var symbols, startState, transition, accept, epsilon;
       ${code}
-      return { startState, transition, accept, epsilon };
+      return { symbols, startState, transition, accept, epsilon };
     })();
   `;
 
@@ -420,22 +441,34 @@ export function parseNFAConfig(code) {
       throw new Error('epsilon must be a function');
     }
 
+    // symbols is required
+    if (result.symbols === undefined) {
+      throw new Error('symbols is not defined');
+    }
+
+    if (result.symbols instanceof RegExp) {
+      result.symbols = expandSymbolRegex(result.symbols);
+    } else if (typeof result.symbols === 'string') {
+      result.symbols = expandSymbolClass(result.symbols);
+    } else {
+      throw new Error('symbols must be a string or RegExp');
+    }
+
     return result;
   } catch (e) {
     throw new Error(`Code error: ${e.message}`);
   }
-}
-
-/**
+}/**
  * Build unified code string from split input components
  *
+ * @param {string} symbolsCode - The symbols expression
  * @param {string} startStateCode - The startState expression
  * @param {string} transitionBody - Body of the transition function
  * @param {string} acceptBody - Body of the accept function
  * @param {string} [epsilonBody] - Body of the epsilon function (optional)
  * @returns {string} Complete code string
  */
-export function buildCodeFromSplit(startStateCode, transitionBody, acceptBody, epsilonBody) {
+export function buildCodeFromSplit(symbolsCode, startStateCode, transitionBody, acceptBody, epsilonBody) {
   const indentedTransition = transitionBody
     .split('\n')
     .map(line => '  ' + line)
@@ -446,7 +479,9 @@ export function buildCodeFromSplit(startStateCode, transitionBody, acceptBody, e
     .map(line => '  ' + line)
     .join('\n');
 
-  let code = `startState = ${startStateCode};
+  let code = `symbols = /[${symbolsCode}]/;
+
+startState = ${startStateCode};
 
 function transition(state, symbol) {
 ${indentedTransition}
@@ -482,7 +517,7 @@ ${indentedEpsilon}
  * 3. Serialize startState back to code
  *
  * @param {string} code - Unified code string
- * @returns {{startState: string, transitionBody: string, acceptBody: string, epsilonBody: string}}
+ * @returns {{symbols: string, startState: string, transitionBody: string, acceptBody: string, epsilonBody: string}}
  */
 export function parseSplitFromCode(code) {
   try {
@@ -491,6 +526,7 @@ export function parseSplitFromCode(code) {
     const parsed = new Function(`
       ${code};
       return {
+        symbols: typeof symbols !== 'undefined' ? symbols : undefined,
         startState,
         transition,
         accept,
@@ -498,18 +534,29 @@ export function parseSplitFromCode(code) {
       };
     `)();
 
+    let symbols = parsed.symbols;
+    if (symbols instanceof RegExp) {
+      symbols = symbols.source;
+      if (symbols.startsWith('[') && symbols.endsWith(']')) {
+        symbols = symbols.slice(1, -1);
+      }
+    }
+
     return {
-      startState: JSON.stringify(parsed.startState),
+      symbols: symbols || '1-9',
+      startState: canonicalJSON(parsed.startState),
       transitionBody: extractFunctionBody(parsed.transition),
       acceptBody: extractFunctionBody(parsed.accept),
       epsilonBody: parsed.epsilon ? extractFunctionBody(parsed.epsilon) : ''
     };
-  } catch {
-    // Fallback to empty if code is invalid
+  } catch (e) {
+    console.error('Failed to parse unified code:', e);
+    // Fallback to empty/default values if parsing fails
     return {
-      startState: '',
-      transitionBody: '',
-      acceptBody: '',
+      symbols: '1-9',
+      startState: '0',
+      transitionBody: 'return undefined;',
+      acceptBody: 'return false;',
       epsilonBody: ''
     };
   }
