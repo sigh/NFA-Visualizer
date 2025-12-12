@@ -29,7 +29,7 @@ const STORAGE_KEYS = {
   accept: 'nfa-accept',
   epsilon: 'nfa-epsilon',
   unified: 'nfa-unified-code',
-  unifiedMode: 'nfa-unified-mode',
+  inputMode: 'nfa-input-mode',
   testInput: 'nfa-test-input'
 };
 
@@ -92,6 +92,7 @@ class App {
     this.view = null;
     this.visualizer = null;
     this.pipelineViews = [];
+    this.isRestoring = false;
 
     // CodeJar editor instances
     this.editors = {
@@ -226,13 +227,18 @@ class App {
    * Save current input values to sessionStorage
    */
   saveToStorage() {
+    if (this.isRestoring) return;
+
     sessionStorage.setItem(STORAGE_KEYS.symbols, this.editors.symbols.toString());
     sessionStorage.setItem(STORAGE_KEYS.startState, this.editors.startState.toString());
     sessionStorage.setItem(STORAGE_KEYS.transition, this.editors.transition.toString());
     sessionStorage.setItem(STORAGE_KEYS.accept, this.editors.accept.toString());
     sessionStorage.setItem(STORAGE_KEYS.epsilon, this.editors.epsilon.toString());
     sessionStorage.setItem(STORAGE_KEYS.unified, this.editors.unified.toString());
-    sessionStorage.setItem(STORAGE_KEYS.unifiedMode, this.elements.tabUnified.classList.contains('active'));
+
+    const mode = this.elements.tabUnified.classList.contains('active') ? 'unified' : 'split';
+    sessionStorage.setItem(STORAGE_KEYS.inputMode, mode);
+
     sessionStorage.setItem(STORAGE_KEYS.testInput, this.elements.testInput.value);
   }
 
@@ -240,13 +246,18 @@ class App {
    * Restore input values from sessionStorage
    */
   restoreFromStorage() {
+    this.isRestoring = true;
+
+    const inputMode = sessionStorage.getItem(STORAGE_KEYS.inputMode);
+    // Restore mode toggle state first to avoid layout jitter
+    this.updateModeUI(inputMode || 'split');
+
     const symbols = sessionStorage.getItem(STORAGE_KEYS.symbols);
     const startState = sessionStorage.getItem(STORAGE_KEYS.startState);
     const transition = sessionStorage.getItem(STORAGE_KEYS.transition);
     const accept = sessionStorage.getItem(STORAGE_KEYS.accept);
     const epsilon = sessionStorage.getItem(STORAGE_KEYS.epsilon);
     const unified = sessionStorage.getItem(STORAGE_KEYS.unified);
-    const unifiedMode = sessionStorage.getItem(STORAGE_KEYS.unifiedMode);
     const testInput = sessionStorage.getItem(STORAGE_KEYS.testInput);
 
     if (symbols !== null) this.editors.symbols.updateCode(symbols);
@@ -257,16 +268,15 @@ class App {
     if (unified !== null) this.editors.unified.updateCode(unified);
     if (testInput !== null) this.elements.testInput.value = testInput;
 
-    // Restore mode toggle state
-    const isUnified = unifiedMode === 'true';
-    this.updateModeUI(isUnified);
+    this.isRestoring = false;
   }
 
   /**
    * Update UI elements for the selected mode
-   * @param {boolean} isUnified
+   * @param {string} mode
    */
-  updateModeUI(isUnified) {
+  updateModeUI(mode) {
+    const isUnified = mode === 'unified';
     this.elements.tabUnified.classList.toggle('active', isUnified);
     this.elements.tabSplit.classList.toggle('active', !isUnified);
     this.elements.unifiedInput.classList.toggle('hidden', !isUnified);
@@ -283,14 +293,13 @@ class App {
    * @param {string} mode - 'split' or 'unified'
    */
   handleModeToggle(mode) {
-    const isUnified = mode === 'unified';
-    const currentIsUnified = this.elements.tabUnified.classList.contains('active');
+    const currentMode = this.elements.tabUnified.classList.contains('active') ? 'unified' : 'split';
 
-    if (isUnified === currentIsUnified) return;
+    if (mode === currentMode) return;
 
-    this.updateModeUI(isUnified);
+    this.updateModeUI(mode);
 
-    if (isUnified) {
+    if (mode === 'unified') {
       // Convert split inputs to unified code
       const code = buildCodeFromSplit(
         this.editors.startState.toString() || '"start"',
@@ -320,7 +329,7 @@ class App {
     const example = EXAMPLES[key];
     if (!example) return;
 
-    this.updateModeUI(true);
+    this.updateModeUI('unified');
     this.editors.unified.updateCode(example.code);
     if (example.symbols) this.editors.symbols.updateCode(example.symbols);
 
