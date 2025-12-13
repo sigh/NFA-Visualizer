@@ -151,13 +151,15 @@ export class NFA {
     this.startStates = new Set();
     /** @type {Set<number>} */
     this.acceptStates = new Set();
-    /** @type {Map<number, string>} State ID to label for visualization */
-    this.stateLabels = new Map();
+    /** @type {string[]} State ID to label for visualization */
+    this.stateLabels = [];
     /** @type {Map<number, Set<number>>} Epsilon transitions: fromState -> Set<toState> */
     this.epsilonTransitions = new Map();
 
     /** @type {StateTransformation|null} Cached dead states transformation */
     this._deadStatesCache = null;
+    /** @type {Object|null} Epsilon closure info (if computed) */
+    this.epsilonClosureInfo = null;
   }
 
   /**
@@ -170,11 +172,11 @@ export class NFA {
   }
 
   /** Add a new state, returns its ID */
-  addState(accepting = false) {
+  addState(label) {
     this._deadStatesCache = null;
     const id = this._transitions.length;
     this._transitions.push([]);
-    if (accepting) this.acceptStates.add(id);
+    this.stateLabels.push(label === undefined ? id.toString() : label);
     return id;
   }
 
@@ -250,6 +252,100 @@ export class NFA {
 
   numStates() {
     return this._transitions.length;
+  }
+
+  /**
+   * Enforce epsilon transitions by computing closures and adding necessary transitions/states.
+   * Populates epsilonClosureInfo.
+   */
+  enforceEpsilonTransitions() {
+    if (this.epsilonTransitions.size === 0) return; // No epsilon transitions
+
+    const epsilonClosureInfo = {
+      addedStartStates: new Set(),
+      addedAcceptStates: new Set(),
+      addedTransitions: new Map(), // fromId -> symbolIndex -> Set<toId>
+      startStateEpsilonClosure: new Map() // stateId -> Set<stateId>
+    };
+    this.epsilonClosureInfo = epsilonClosureInfo;
+
+    // Local cache for epsilon closures
+    const epsilonClosure = new Map(); // stateId -> Set<stateId>
+
+    // Helper to get epsilon closure of a state ID
+    const getEpsilonClosure = (stateId) => {
+      if (epsilonClosure.has(stateId)) {
+        return epsilonClosure.get(stateId);
+      }
+      const closure = new Set([stateId]);
+      const stack = [stateId];
+      while (stack.length > 0) {
+        const current = stack.pop();
+        const targets = this.epsilonTransitions.get(current);
+        if (targets) {
+          for (const target of targets) {
+            if (!closure.has(target)) {
+              closure.add(target);
+              stack.push(target);
+            }
+          }
+        }
+      }
+      epsilonClosure.set(stateId, closure);
+      return closure;
+    };
+
+    // Expand start states
+    for (const startId of [...this.startStates]) {
+      const closure = getEpsilonClosure(startId);
+      epsilonClosureInfo.startStateEpsilonClosure.set(startId, closure);
+
+      for (const closureState of closure) {
+        if (this.addStart(closureState)) {
+          epsilonClosureInfo.addedStartStates.add(closureState);
+          epsilonClosureInfo.startStateEpsilonClosure.set(
+            closureState, getEpsilonClosure(closureState));
+        }
+      }
+    }
+
+    // Add transitions to epsilon closure states
+    const numStates = this.numStates();
+    for (let fromId = 0; fromId < numStates; fromId++) {
+      for (let symbolIndex = 0; symbolIndex < this.symbols.length; symbolIndex++) {
+        // Snapshot transitions to avoid iterating over newly added ones
+        const targets = [...this.getTransitions(fromId, symbolIndex)];
+        for (const toId of targets) {
+          for (const closureState of getEpsilonClosure(toId)) {
+            if (this.addTransition(fromId, closureState, symbolIndex)) {
+              let fromMap = epsilonClosureInfo.addedTransitions.get(fromId);
+              if (!fromMap) {
+                fromMap = new Map();
+                epsilonClosureInfo.addedTransitions.set(fromId, fromMap);
+              }
+              let toSet = fromMap.get(symbolIndex);
+              if (!toSet) {
+                toSet = new Set();
+                fromMap.set(symbolIndex, toSet);
+              }
+              toSet.add(closureState);
+            }
+          }
+        }
+      }
+    }
+
+    // Propagate accept status
+    for (let id = 0; id < numStates; id++) {
+      for (const closureState of getEpsilonClosure(id)) {
+        if (this.acceptStates.has(closureState)) {
+          if (this.addAccept(id)) {
+            epsilonClosureInfo.addedAcceptStates.add(id);
+          }
+          break;
+        }
+      }
+    }
   }
 
   /**
@@ -336,33 +432,41 @@ export class NFA {
     }));
   }
 
+  hasEnforcedEpsilonTransitions() {
+    return this.epsilonTransitions.size === 0 || this.epsilonClosureInfo !== null;
+  }
+
   /**
    * Create a reversed NFA where all transitions are flipped.
    * Start states become accept states and vice versa.
    * @returns {NFA} A new NFA with reversed transitions
    */
   reverse() {
+    if (!this.hasEnforcedEpsilonTransitions()) {
+      throw new Error('Epsilon transitions must be enforced before reversing the NFA.');
+    }
+
     const reversed = new NFA(this.symbols);
+    const numStates = this._transitions.length;
 
-    // Create same number of states
-    for (let i = 0; i < this._transitions.length; i++) {
-      reversed.addState();
-    }
+    // Direct internal manipulation for performance
+    reversed.stateLabels = [...this.stateLabels];
+    reversed.startStates = new Set(this.acceptStates);
+    reversed.acceptStates = new Set(this.startStates);
 
-    // Swap start and accept states
-    for (const id of this.startStates) {
-      reversed.addAccept(id);
-    }
-    for (const id of this.acceptStates) {
-      reversed.addStart(id);
+    // Pre-allocate transitions array
+    reversed._transitions = new Array(numStates);
+    for (let i = 0; i < numStates; i++) {
+      reversed._transitions[i] = [];
     }
 
     // Reverse all transitions
-    for (let fromId = 0; fromId < this._transitions.length; fromId++) {
+    for (let fromId = 0; fromId < numStates; fromId++) {
       const stateTransitions = this._transitions[fromId];
       for (let symbolIndex = 0; symbolIndex < stateTransitions.length; symbolIndex++) {
         const targets = stateTransitions[symbolIndex];
         if (!targets) continue;
+
         for (const toId of targets) {
           reversed.addTransition(toId, fromId, symbolIndex);
         }
@@ -551,76 +655,5 @@ export class NFA {
     }
 
     return sigParts.join('|');
-  }
-
-  /**
-   * Apply a transformation to create a new minimized NFA.
-   * @param {StateTransformation} transform - Transformation from getEquivalentStateRemap
-   * @returns {NFA} New NFA with merged/deleted states
-   */
-  applyTransformation(transform) {
-    const remap = transform.remap;
-
-    // Find canonical states (states where remap[s] === s and s !== -1)
-    const canonicalStates = [];
-    const oldToNew = new Int32Array(remap.length).fill(-1);
-
-    for (let s = 0; s < remap.length; s++) {
-      if (remap[s] === s) {
-        oldToNew[s] = canonicalStates.length;
-        canonicalStates.push(s);
-      }
-    }
-
-    // Map non-canonical states through canonical
-    for (let s = 0; s < remap.length; s++) {
-      if (remap[s] !== -1 && remap[s] !== s) {
-        oldToNew[s] = oldToNew[remap[s]];
-      }
-    }
-
-    // Build new NFA
-    const newNfa = new NFA(this.symbols);
-
-    // Add states
-    for (const oldId of canonicalStates) {
-      const newId = newNfa.addState(this.acceptStates.has(oldId));
-      // Copy label if exists
-      if (this.stateLabels.has(oldId)) {
-        newNfa.stateLabels.set(newId, this.stateLabels.get(oldId));
-      }
-    }
-
-    // Set start states
-    for (const oldStart of this.startStates) {
-      const newStart = oldToNew[oldStart];
-      if (newStart !== -1) {
-        newNfa.addStart(newStart);
-      }
-    }
-
-    // Add transitions (deduplicating via Set)
-    for (const oldId of canonicalStates) {
-      const newFromId = oldToNew[oldId];
-      const oldTransitions = this._transitions[oldId];
-      if (!oldTransitions) continue;
-
-      for (let symIdx = 0; symIdx < this.symbols.length; symIdx++) {
-        const oldTargets = oldTransitions[symIdx];
-        if (!oldTargets) continue;
-
-        const newTargets = new Set();
-        for (const oldTarget of oldTargets) {
-          const newTarget = oldToNew[oldTarget];
-          if (newTarget !== -1) newTargets.add(newTarget);
-        }
-
-        for (const newTarget of newTargets) {
-          newNfa.addTransition(newFromId, newTarget, symIdx);
-        }
-      }
-    }
-
-    return newNfa;
   }
 }

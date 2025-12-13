@@ -203,7 +203,8 @@ describe('NFAView', () => {
     test('returns correct stats for simple NFA', () => {
       const nfa = createTestNFA();
       nfa.addState();      // q0 - start
-      nfa.addState(true);  // q1 - accept
+      const s1 = nfa.addState();  // q1 - accept
+      nfa.addAccept(s1);
       nfa.addState();      // q2
       nfa.addStart(0);
       const transform = StateTransformation.identity(3);
@@ -376,6 +377,31 @@ describe('NFAView', () => {
       const view = new NFAView(nfa, transform, { showEpsilonTransitions: true });
 
       assert.strictEqual(view.isDeterministic(), false);
+    });
+  });
+
+  describe('getStateInfo() with raw epsilon view', () => {
+    test('start state stays live if epsilon closure reaches live path', () => {
+      const nfa = createTestNFA(['a']);
+      const s0 = nfa.addState(); // start
+      const s1 = nfa.addState(); // via epsilon
+      const s2 = nfa.addState(); // accept
+      nfa.addAccept(s2);
+
+      nfa.addStart(s0);
+      nfa.addEpsilonTransition(s0, s1);
+      nfa.addTransition(s1, s2, 0);
+
+      // Calculate epsilon closure info
+      nfa.enforceEpsilonTransitions();
+
+      const transform = StateTransformation.identity(3);
+      const view = new NFAView(nfa, transform, { showEpsilonTransitions: true });
+
+      const info = view.getStateInfo();
+      const startInfo = info.find(s => s.id === s0);
+      assert(startInfo.isStart);
+      assert.strictEqual(startInfo.isDead, false);
     });
   });
 });

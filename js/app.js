@@ -601,7 +601,7 @@ class App {
       for (const id of sources) {
         const sourceDiv = document.createElement('div');
         sourceDiv.className = 'state-source-item';
-        const sourceLabel = this.currentNFA.stateLabels.get(id);
+        const sourceLabel = this.currentNFA.stateLabels[id];
         sourceDiv.textContent = sourceLabel != null
           ? `q${id}: ${sourceLabel}`
           : `q${id}`;
@@ -611,7 +611,7 @@ class App {
     } else {
       const labelSpan = document.createElement('span');
       labelSpan.className = 'state-label';
-      labelSpan.textContent = this.currentNFA.stateLabels.get(state.id) ?? `q${state.id}`;
+      labelSpan.textContent = this.currentNFA.stateLabels[state.id] ?? `q${state.id}`;
       header.append(idSpan, ' = ', labelSpan);
     }
 

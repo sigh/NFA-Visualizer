@@ -646,13 +646,13 @@ export class NFAVisualizer {
     // If this node absorbed other states, list each source on its own line
     if (sources.length > 1) {
       const sourceLines = sources.map(id => {
-        const label = this.view.nfa.stateLabels.get(id);
+        const label = this.view.nfa.stateLabels[id];
         return label !== null && label !== undefined ? `q${id}: ${label}` : `q${id}`;
       });
       return sourceLines.join('\n');
     }
 
-    const stateLabel = this.view.nfa.stateLabels.get(stateId);
+    const stateLabel = this.view.nfa.stateLabels[stateId];
     if (stateLabel === null || stateLabel === undefined) {
       return `q${stateId}`;
     }

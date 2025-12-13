@@ -212,13 +212,37 @@ export class NFAView {
    */
   getStateInfo() {
     const deadTransform = this.nfa.getDeadStates();
+
+    if (!this.nfa.hasEnforcedEpsilonTransitions()) {
+      throw new Error(
+        'Warning: NFA has epsilon transitions but no epsilon closure info');
+    }
+
+    // In raw NFA mode (explicit epsilons), treat a start state as live if any
+    // state in its epsilon-closure is live.
+    const hasLiveStartStateInClosure = (stateId) => {
+      // If we don't have epsilon closure info, there are no epsilon transitions.
+      if (!this.nfa.epsilonClosureInfo) return false;
+
+      // If it's not in the start state epsilon closure map, it is not a start
+      // state in the epsilon closure.
+      const startStateClosure = this.nfa.epsilonClosureInfo.startStateEpsilonClosure.get(stateId);
+      if (!startStateClosure) return false;
+
+      const closure = this.nfa.epsilonClosureInfo.startStateEpsilonClosure.get(stateId);
+      for (const id of closure) {
+        if (!deadTransform.isDeleted(id)) return true;
+      }
+      return false;
+    };
+
     return this.nfa._transitions.map((_, id) => ({
       id,
       isStart: this.isStart(id),
       isAccept: this.isAccepting(id),
       isDead: deadTransform.isDeleted(id)
-        // In Raw NFA mode, all start states should be live.
-        && (!this.showEpsilonTransitions || !this.isStart(id))
+        // In raw NFA mode, stay live if epsilon-closure reaches a live state.
+        && !(this.showEpsilonTransitions && hasLiveStartStateInClosure(id))
     }));
   }
 

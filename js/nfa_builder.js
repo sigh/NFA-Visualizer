@@ -72,7 +72,6 @@ export class NFABuilder {
 
     // Maps for state serialization (user values <-> NFA IDs)
     const stateStrToId = new Map();
-    const idToStateStr = new Map();
 
     // Wrap user functions to provide better error messages
     const wrappedAccept = this._wrapAcceptFn(this.acceptFn);
@@ -90,27 +89,6 @@ export class NFABuilder {
       return targets;
     };
 
-    // Cache epsilon closures (stateStr -> Set<stateStr>)
-    const epsilonClosureCache = new Map();
-    const getEpsilonClosure = (stateStr) => {
-      if (!wrappedEpsilon) return new Set([stateStr]);
-      if (epsilonClosureCache.has(stateStr)) return epsilonClosureCache.get(stateStr);
-
-      const closure = new Set([stateStr]);
-      const stack = [stateStr];
-      while (stack.length > 0) {
-        const current = stack.pop();
-        for (const target of getEpsilonTargets(current)) {
-          if (!closure.has(target)) {
-            closure.add(target);
-            stack.push(target);
-          }
-        }
-      }
-      epsilonClosureCache.set(stateStr, closure);
-      return closure;
-    };
-
     /**
      * Add a state to the NFA, returning existing ID if already added
      */
@@ -123,9 +101,8 @@ export class NFABuilder {
         throw new Error(`NFA exceeded maximum state limit (${this.maxStates}). Consider simplifying your state machine.`);
       }
 
-      const id = nfa.addState();
+      const id = nfa.addState(stateStr);
       stateStrToId.set(stateStr, id);
-      idToStateStr.set(id, stateStr);
 
       if (wrappedAccept(stateStr)) {
         nfa.addAccept(id);
@@ -155,7 +132,7 @@ export class NFABuilder {
       if (visited.has(currentId)) continue;
       visited.add(currentId);
 
-      const stateStr = idToStateStr.get(currentId);
+      const stateStr = nfa.stateLabels[currentId];
 
       // Try all configured symbols (using index for efficient storage)
       for (let symbolIndex = 0; symbolIndex < this.symbols.length; symbolIndex++) {
@@ -189,69 +166,7 @@ export class NFABuilder {
     }
 
     // Apply epsilon closure transformations to NFA structure
-    const epsilonClosureInfo = {
-      addedStartStates: new Set(),
-      addedAcceptStates: new Set(),
-      addedTransitions: new Map() // fromId -> symbolIndex -> Set<toId>
-    };
-
-    if (wrappedEpsilon) {
-      // Expand start states to include epsilon closures
-      for (const startId of [...nfa.startStates]) {
-        const stateStr = idToStateStr.get(startId);
-        for (const closureState of getEpsilonClosure(stateStr)) {
-          const id = stateStrToId.get(closureState);
-          if (nfa.addStart(id)) {
-            epsilonClosureInfo.addedStartStates.add(id);
-          }
-        }
-      }
-
-      // Add transitions to epsilon closure states
-      const numStates = nfa.numStates();
-      for (let fromId = 0; fromId < numStates; fromId++) {
-        for (let symbolIndex = 0; symbolIndex < this.symbols.length; symbolIndex++) {
-          // Snapshot transitions to avoid iterating over newly added ones
-          const targets = [...nfa.getTransitions(fromId, symbolIndex)];
-          for (const toId of targets) {
-            const toStateStr = idToStateStr.get(toId);
-            for (const closureState of getEpsilonClosure(toStateStr)) {
-              const targetId = stateStrToId.get(closureState);
-              if (nfa.addTransition(fromId, targetId, symbolIndex)) {
-                // Record added transition
-                let fromMap = epsilonClosureInfo.addedTransitions.get(fromId);
-                if (!fromMap) {
-                  fromMap = new Map();
-                  epsilonClosureInfo.addedTransitions.set(fromId, fromMap);
-                }
-                let toSet = fromMap.get(symbolIndex);
-                if (!toSet) {
-                  toSet = new Set();
-                  fromMap.set(symbolIndex, toSet);
-                }
-                toSet.add(targetId);
-              }
-            }
-          }
-        }
-      }
-
-      // Propagate accept status through epsilon closures
-      for (const [stateStr, id] of stateStrToId) {
-        for (const closureState of getEpsilonClosure(stateStr)) {
-          if (nfa.acceptStates.has(stateStrToId.get(closureState))) {
-            if (nfa.addAccept(id)) {
-              epsilonClosureInfo.addedAcceptStates.add(id);
-            }
-            break;
-          }
-        }
-      }
-    }
-
-    // Store state labels for visualization
-    nfa.stateLabels = idToStateStr;
-    nfa.epsilonClosureInfo = epsilonClosureInfo;
+    nfa.enforceEpsilonTransitions();
 
     return nfa;
   }
