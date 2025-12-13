@@ -37,6 +37,7 @@
         <div class="config-tabs">
           <button class="config-tab active" id="tab-split" data-mode="split">Split Code</button>
           <button class="config-tab" id="tab-unified" data-mode="unified">Unified Code</button>
+          <button class="config-tab" id="tab-regex" data-mode="regex">Regex</button>
         </div>
 
         <div id="split-input">
@@ -114,6 +115,32 @@
         <div id="unified-input" class="hidden">
           <div class="editor-resize-wrapper editor-resize-wrapper-large">
             <div id="unified-code" class="code-editor"></div>
+          </div>
+        </div>
+
+        <div id="regex-input" class="hidden">
+          <div class="code-block code-block-inline">
+            <code class="code-line code-decoration language-javascript">// Symbols to explore.</code>
+            <code class="code-line code-decoration language-javascript">// (regex character class syntax)</code>
+            <div class="code-line">
+              <code class="code-decoration language-javascript">symbols =</code>
+              <span class="token regex">
+                &nbsp;/[<span id="regex-symbols-input" class="code-editor-inline token regex">1-9</span>]/
+              </span>
+              <code class="code-decoration language-javascript">;</code>
+            </div>
+          </div>
+
+          <div class="code-block">
+            <code
+              class="code-line code-decoration language-javascript">// Enter a regular expression to convert to NFA</code>
+            <div class="code-line regex-input-container">
+              <code class="code-decoration language-javascript regex-decoration">regex = /</code>
+              <div class="editor-resize-wrapper regex-editor-wrapper">
+                <div id="regex-code" class="code-editor token regex"></div>
+              </div>
+              <code class="code-decoration language-javascript regex-decoration-end">/;</code>
+            </div>
           </div>
         </div>
       </div>

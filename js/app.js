@@ -29,8 +29,17 @@ const STORAGE_KEYS = {
   accept: 'nfa-accept',
   epsilon: 'nfa-epsilon',
   unified: 'nfa-unified-code',
+  regex: 'nfa-regex',
+  regexSymbols: 'nfa-regex-symbols',
   inputMode: 'nfa-input-mode',
   testInput: 'nfa-test-input'
+};
+
+/** Input modes enum */
+const MODES = {
+  SPLIT: 'split',
+  UNIFIED: 'unified',
+  REGEX: 'regex'
 };
 
 // ============================================
@@ -48,8 +57,10 @@ class App {
       examplesSelect: document.getElementById('examples-select'),
       tabSplit: document.getElementById('tab-split'),
       tabUnified: document.getElementById('tab-unified'),
+      tabRegex: document.getElementById('tab-regex'),
       splitInput: document.getElementById('split-input'),
       unifiedInput: document.getElementById('unified-input'),
+      regexInput: document.getElementById('regex-input'),
 
       // Split mode inputs (now divs for CodeJar)
       symbolsInput: document.getElementById('symbols-input'),
@@ -60,6 +71,10 @@ class App {
 
       // Unified mode input
       unifiedCodeInput: document.getElementById('unified-code'),
+
+      // Regex mode input
+      regexSymbolsInput: document.getElementById('regex-symbols-input'),
+      regexCodeInput: document.getElementById('regex-code'),
 
       // Actions
       buildBtn: document.getElementById('build-btn'),
@@ -94,6 +109,7 @@ class App {
     this.visualizer = null;
     this.pipelineViews = [];
     this.isRestoring = false;
+    this.mode = MODES.SPLIT;
 
     // CodeJar editor instances
     this.editors = {
@@ -102,7 +118,9 @@ class App {
       transition: null,
       accept: null,
       epsilon: null,
-      unified: null
+      unified: null,
+      regex: null,
+      regexSymbols: null
     };
   }
 
@@ -129,6 +147,8 @@ class App {
     this.editors.accept = CodeJar(this.elements.acceptInput, (e) => this.highlight(e), { tab: '  ' });
     this.editors.epsilon = CodeJar(this.elements.epsilonInput, (e) => this.highlight(e), { tab: '  ' });
     this.editors.unified = CodeJar(this.elements.unifiedCodeInput, (e) => this.highlight(e), { tab: '  ' });
+    this.editors.regex = CodeJar(this.elements.regexCodeInput, () => { }, { tab: '  ' });
+    this.editors.regexSymbols = CodeJar(this.elements.regexSymbolsInput, () => { }, { tab: '  ' });
 
     // Save on changes
     this.editors.symbols.onUpdate(() => this.saveToStorage());
@@ -137,6 +157,8 @@ class App {
     this.editors.accept.onUpdate(() => this.saveToStorage());
     this.editors.epsilon.onUpdate(() => this.saveToStorage());
     this.editors.unified.onUpdate(() => this.saveToStorage());
+    this.editors.regex.onUpdate(() => this.saveToStorage());
+    this.editors.regexSymbols.onUpdate(() => this.saveToStorage());
 
     // Add Ctrl+Enter to run (capture phase to prevent editor from eating it)
 
@@ -182,8 +204,9 @@ class App {
 
     // Set up event listeners
     this.elements.examplesSelect.addEventListener('change', (e) => this.handleExampleSelect(e.target.value));
-    this.elements.tabSplit.addEventListener('click', () => this.handleModeToggle('split'));
-    this.elements.tabUnified.addEventListener('click', () => this.handleModeToggle('unified'));
+    this.elements.tabSplit.addEventListener('click', () => this.switchMode(MODES.SPLIT));
+    this.elements.tabUnified.addEventListener('click', () => this.switchMode(MODES.UNIFIED));
+    this.elements.tabRegex.addEventListener('click', () => this.switchMode(MODES.REGEX));
     this.elements.buildBtn.addEventListener('click', () => this.handleBuild());
 
     // Auto-update test on input change
@@ -250,9 +273,10 @@ class App {
     sessionStorage.setItem(STORAGE_KEYS.accept, this.editors.accept.toString());
     sessionStorage.setItem(STORAGE_KEYS.epsilon, this.editors.epsilon.toString());
     sessionStorage.setItem(STORAGE_KEYS.unified, this.editors.unified.toString());
+    sessionStorage.setItem(STORAGE_KEYS.regex, this.editors.regex.toString());
+    sessionStorage.setItem(STORAGE_KEYS.regexSymbols, this.editors.regexSymbols.toString());
 
-    const mode = this.elements.tabUnified.classList.contains('active') ? 'unified' : 'split';
-    sessionStorage.setItem(STORAGE_KEYS.inputMode, mode);
+    sessionStorage.setItem(STORAGE_KEYS.inputMode, this.mode);
 
     sessionStorage.setItem(STORAGE_KEYS.testInput, this.elements.testInput.value);
   }
@@ -265,7 +289,7 @@ class App {
 
     const inputMode = sessionStorage.getItem(STORAGE_KEYS.inputMode);
     // Restore mode toggle state first to avoid layout jitter
-    this.updateModeUI(inputMode || 'split');
+    this.switchMode(inputMode || MODES.SPLIT);
 
     const symbols = sessionStorage.getItem(STORAGE_KEYS.symbols);
     const startState = sessionStorage.getItem(STORAGE_KEYS.startState);
@@ -273,6 +297,8 @@ class App {
     const accept = sessionStorage.getItem(STORAGE_KEYS.accept);
     const epsilon = sessionStorage.getItem(STORAGE_KEYS.epsilon);
     const unified = sessionStorage.getItem(STORAGE_KEYS.unified);
+    const regex = sessionStorage.getItem(STORAGE_KEYS.regex);
+    const regexSymbols = sessionStorage.getItem(STORAGE_KEYS.regexSymbols);
     const testInput = sessionStorage.getItem(STORAGE_KEYS.testInput);
 
     if (symbols !== null) this.editors.symbols.updateCode(symbols);
@@ -281,6 +307,8 @@ class App {
     if (accept !== null) this.editors.accept.updateCode(accept);
     if (epsilon !== null) this.editors.epsilon.updateCode(epsilon);
     if (unified !== null) this.editors.unified.updateCode(unified);
+    if (regex !== null) this.editors.regex.updateCode(regex);
+    if (regexSymbols !== null) this.editors.regexSymbols.updateCode(regexSymbols);
     if (testInput !== null) this.elements.testInput.value = testInput;
 
     this.isRestoring = false;
@@ -291,31 +319,34 @@ class App {
    * @param {string} mode
    */
   updateModeUI(mode) {
-    const isUnified = mode === 'unified';
+    const isUnified = mode === MODES.UNIFIED;
+    const isRegex = mode === MODES.REGEX;
+    const isSplit = mode === MODES.SPLIT;
+
     this.elements.tabUnified.classList.toggle('active', isUnified);
-    this.elements.tabSplit.classList.toggle('active', !isUnified);
+    this.elements.tabSplit.classList.toggle('active', isSplit);
+    this.elements.tabRegex.classList.toggle('active', isRegex);
+
     this.elements.unifiedInput.classList.toggle('hidden', !isUnified);
-    this.elements.splitInput.classList.toggle('hidden', isUnified);
+    this.elements.splitInput.classList.toggle('hidden', !isSplit);
+    this.elements.regexInput.classList.toggle('hidden', !isRegex);
   }
 
   // ============================================
-  // Mode Toggle Handler
+  // Mode Switching
   // ============================================
 
   /**
-   * Toggle between split and unified input modes,
-   * converting code between formats.
-   * @param {string} mode - 'split' or 'unified'
+   * Switch between input modes (split, unified, regex)
+   * @param {string} mode - 'split', 'unified', or 'regex'
    */
-  handleModeToggle(mode) {
-    const currentMode = this.elements.tabUnified.classList.contains('active') ? 'unified' : 'split';
+  switchMode(mode) {
+    if (mode === this.mode) return;
 
-    if (mode === currentMode) return;
+    const previousMode = this.mode;
 
-    this.updateModeUI(mode);
-
-    if (mode === 'unified') {
-      // Convert split inputs to unified code
+    // Sync data based on the mode we are leaving
+    if (previousMode === MODES.SPLIT) {
       const code = buildCodeFromSplit(
         this.editors.symbols.toString() || '1-9',
         this.editors.startState.toString() || '"start"',
@@ -324,16 +355,21 @@ class App {
         this.editors.epsilon.toString()
       );
       this.editors.unified.updateCode(code);
-    } else {
-      // Parse unified code back to split inputs
-      const parts = parseSplitFromCode(this.editors.unified.toString());
-      this.editors.symbols.updateCode(parts.symbols);
-      this.editors.startState.updateCode(parts.startState);
-      this.editors.transition.updateCode(parts.transitionBody);
-      this.editors.accept.updateCode(parts.acceptBody);
-      this.editors.epsilon.updateCode(parts.epsilonBody);
+    } else if (previousMode === MODES.UNIFIED) {
+      try {
+        const parts = parseSplitFromCode(this.editors.unified.toString());
+        this.editors.symbols.updateCode(parts.symbols);
+        this.editors.startState.updateCode(parts.startState);
+        this.editors.transition.updateCode(parts.transitionBody);
+        this.editors.accept.updateCode(parts.acceptBody);
+        this.editors.epsilon.updateCode(parts.epsilonBody);
+      } catch (e) {
+        console.warn('Failed to sync unified to split:', e);
+      }
     }
 
+    this.mode = mode;
+    this.updateModeUI(mode);
     this.saveToStorage();
     this.hideError();
   }
@@ -346,7 +382,7 @@ class App {
     const example = EXAMPLES[key];
     if (!example) return;
 
-    this.updateModeUI('unified');
+    this.switchMode(MODES.UNIFIED);
     this.editors.unified.updateCode(example.code);
     if (example.symbols) this.editors.symbols.updateCode(example.symbols);
 
@@ -364,6 +400,10 @@ class App {
     this.hideError();
 
     try {
+      if (this.mode === MODES.REGEX) {
+        throw new Error('Regex mode is not yet implemented');
+      }
+
       // Get code from current input mode
       const code = this.getCurrentCode();
 
@@ -392,7 +432,7 @@ class App {
    * Get the current code from either split or unified mode
    */
   getCurrentCode() {
-    if (this.elements.tabUnified.classList.contains('active')) {
+    if (this.mode === MODES.UNIFIED) {
       return this.editors.unified.toString();
     }
 

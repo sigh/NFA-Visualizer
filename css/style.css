@@ -559,11 +559,37 @@ input[type="text"] {
     min-height: 100%;
     box-sizing: border-box;
   }
+
+  &.editor-resize-wrapper-large {
+    min-height: 300px;
+    max-height: 80vh;
+  }
 }
 
-.editor-resize-wrapper-large {
-  min-height: 300px;
-  max-height: 80vh;
+/* Regex Input Layout */
+.regex-input-container {
+  display: flex;
+  align-items: flex-start;
+
+  .regex-decoration {
+    white-space: nowrap;
+    padding-top: 6px;
+  }
+
+  .regex-decoration-end {
+    white-space: nowrap;
+    padding-bottom: 6px;
+    align-self: flex-end;
+  }
+
+  .regex-editor-wrapper {
+    flex: 1;
+    margin: 0 4px;
+  }
+
+  .code-editor {
+    padding: calc(var(--space-sm) - 3px);
+  }
 }
 
 /* --------------------------------------------------------------------------
