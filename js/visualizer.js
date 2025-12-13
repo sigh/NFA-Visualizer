@@ -631,7 +631,7 @@ export class NFAVisualizer {
   getStateLabel(stateId, sources) {
     // If this node absorbed other states, show with prime notation
     if (sources.length > 1) {
-      return `q'${stateId}`;
+      return `q${stateId}'`;
     }
     return `q${stateId}`;
   }

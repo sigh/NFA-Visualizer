@@ -138,6 +138,20 @@ class App {
     this.editors.epsilon.onUpdate(() => this.saveToStorage());
     this.editors.unified.onUpdate(() => this.saveToStorage());
 
+    // Add Ctrl+Enter to run (capture phase to prevent editor from eating it)
+
+    document.addEventListener(
+      'keydown',
+      e => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          this.handleBuild();
+        }
+      },
+      { capture: true }
+    );
+
     // Highlight static code decoration elements
     document.querySelectorAll('.code-decoration').forEach(el => {
       Prism.highlightElement(el);
@@ -589,7 +603,7 @@ class App {
     idSpan.className = 'state-id';
     // Use prime notation for merged states
     const isMerged = sources.length > 1;
-    idSpan.textContent = isMerged ? `q'${state.id}` : `q${state.id}`;
+    idSpan.textContent = isMerged ? `q${state.id}'` : `q${state.id}`;
 
     // For merged states, show all source states with their labels on separate lines
     if (isMerged) {
@@ -724,7 +738,7 @@ class App {
 
     const stateSpan = document.createElement('span');
     stateSpan.className = 'state-id';
-    stateSpan.textContent = isMerged ? `q'${toState}` : `q${toState}`;
+    stateSpan.textContent = isMerged ? `q${toState}'` : `q${toState}`;
 
     const symbolSpan = document.createElement('span');
     const label = compactSymbolLabel(symbols);
