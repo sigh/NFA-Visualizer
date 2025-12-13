@@ -9,6 +9,7 @@
 import { CodeJar } from '../lib/codejar.min.js';
 import { StateTransformation } from './nfa.js';
 import { NFABuilder, parseNFAConfig, buildCodeFromSplit, parseSplitFromCode, expandSymbolClass } from './nfa_builder.js';
+import { RegexParser, RegexToNFABuilder } from './regex_parser.js';
 import { NFAView } from './nfa_view.js';
 import { NFAVisualizer, compactSymbolLabel } from './visualizer.js';
 import { EXAMPLES } from './examples.js';
@@ -401,19 +402,26 @@ class App {
 
     try {
       if (this.mode === MODES.REGEX) {
-        throw new Error('Regex mode is not yet implemented');
+        const symbolStr = this.editors.regexSymbols.toString() || '1-9';
+        const symbols = expandSymbolClass(symbolStr);
+        const pattern = this.editors.regex.toString();
+
+        const parser = new RegexParser(pattern);
+        const ast = parser.parse();
+        const builder = new RegexToNFABuilder(symbols);
+        this.currentNFA = builder.build(ast);
+      } else {
+        // Get code from current input mode
+        const code = this.getCurrentCode();
+
+        // Parse and validate
+        const config = parseNFAConfig(code);
+
+        // Build NFA
+        // symbols is already expanded to an array by parseNFAConfig
+        const builder = new NFABuilder(config, { ...CONFIG, symbols: config.symbols });
+        this.currentNFA = builder.build();
       }
-
-      // Get code from current input mode
-      const code = this.getCurrentCode();
-
-      // Parse and validate
-      const config = parseNFAConfig(code);
-
-      // Build NFA
-      // symbols is already expanded to an array by parseNFAConfig
-      const builder = new NFABuilder(config, { ...CONFIG, symbols: config.symbols });
-      this.currentNFA = builder.build();
 
       // Precompute views for all pipeline steps
       this.precomputeViews();
