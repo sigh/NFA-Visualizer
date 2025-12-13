@@ -593,8 +593,8 @@ export class NFAVisualizer {
   getLayoutOptions() {
     return {
       name: 'dagre',
-      rankDir: 'LR',
-      nodeSep: 50,
+      rankDir: 'TB',
+      nodeSep: 100,
       rankSep: 80,
       padding: 30
     };
