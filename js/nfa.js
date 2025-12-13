@@ -265,12 +265,11 @@ export class NFA {
       addedStartStates: new Set(),
       addedAcceptStates: new Set(),
       addedTransitions: new Map(), // fromId -> symbolIndex -> Set<toId>
-      startStateEpsilonClosure: new Map() // stateId -> Set<stateId>
+      epsilonClosure: new Map(), // stateId -> Set<stateId>
     };
     this.epsilonClosureInfo = epsilonClosureInfo;
 
-    // Local cache for epsilon closures
-    const epsilonClosure = new Map(); // stateId -> Set<stateId>
+    const epsilonClosure = epsilonClosureInfo.epsilonClosure;
 
     // Helper to get epsilon closure of a state ID
     const getEpsilonClosure = (stateId) => {
@@ -297,14 +296,9 @@ export class NFA {
 
     // Expand start states
     for (const startId of [...this.startStates]) {
-      const closure = getEpsilonClosure(startId);
-      epsilonClosureInfo.startStateEpsilonClosure.set(startId, closure);
-
-      for (const closureState of closure) {
+      for (const closureState of getEpsilonClosure(startId)) {
         if (this.addStart(closureState)) {
           epsilonClosureInfo.addedStartStates.add(closureState);
-          epsilonClosureInfo.startStateEpsilonClosure.set(
-            closureState, getEpsilonClosure(closureState));
         }
       }
     }
