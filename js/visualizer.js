@@ -388,9 +388,8 @@ export class NFAVisualizer {
       elements: elements,
       style: CYTOSCAPE_STYLE,
       layout: layoutOptions,
-      wheelSensitivity: 0.3,
-      minZoom: 0.3,
-      maxZoom: 3
+      minZoom: 0.05,
+      maxZoom: 4
     });
 
     // Setup tooltip events
@@ -596,7 +595,6 @@ export class NFAVisualizer {
       rankDir: 'TB',
       nodeSep: 100,
       rankSep: 80,
-      padding: 30
     };
   }
 
