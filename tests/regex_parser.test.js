@@ -115,4 +115,29 @@ describe('RegexToNFABuilder', () => {
     testRegex('(a|b)*c', 'abac', true);
     testRegex('(a|b)*c', 'aba', false);
   });
+
+  test('generates unique state labels', () => {
+    const testCases = [
+      'aa',           // Repeated characters
+      'aba',          // Repeated characters separated
+      'a|a',          // Alternation of same character
+      '(a|b)(a|b)',   // Repeated groups
+      '[0-9][0-9]',   // Repeated character classes
+      'a*a*',         // Repeated quantifiers
+      '((a))',        // Nested groups
+      '(a|b)*c+(d|e)', // Complex mix
+      'a{2,3}a{2,3}'   // Repeated range quantifiers
+    ];
+
+    for (const regex of testCases) {
+      const parser = new RegexParser(regex);
+      const ast = parser.parse();
+      const builder = new RegexToNFABuilder(symbols);
+      const nfa = builder.build(ast);
+
+      const labels = nfa.stateLabels;
+      const uniqueLabels = new Set(labels);
+      assert.strictEqual(labels.length, uniqueLabels.size, `State labels should be unique for regex /${regex}/. Found: ${labels.join(', ')}`);
+    }
+  });
 });

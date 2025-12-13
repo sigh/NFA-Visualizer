@@ -7,9 +7,10 @@ import { NFA } from './nfa.js';
 
 export class RegexAstNode {
   static Charset = class {
-    constructor(chars, negated = false) {
+    constructor(chars, negated = false, raw = '') {
       this.chars = chars;
       this.negated = negated;
+      this.raw = raw;
     }
   }
 
@@ -144,7 +145,7 @@ export class RegexParser {
     }
     if (ch === '.') {
       this._next();
-      return new RegexAstNode.Charset([], true);  // Negated empty = all symbols
+      return new RegexAstNode.Charset([], true, '.');  // Negated empty = all symbols
     }
     if (ch === undefined) {
       throw new Error('Unexpected end of pattern');
@@ -153,10 +154,11 @@ export class RegexParser {
       throw new Error(`Unexpected token '${ch}' at position ${this.pos}`);
     }
     this._next();
-    return new RegexAstNode.Charset([ch]);
+    return new RegexAstNode.Charset([ch], false, ch);
   }
 
   _parseCharClass() {
+    const startPos = this.pos;
     this._expect('[');
     const isNegated = this._peek() === '^';
     if (isNegated) {
@@ -184,7 +186,8 @@ export class RegexParser {
     if (!chars.size) {
       throw new Error('Empty character class');
     }
-    return new RegexAstNode.Charset([...chars], isNegated);
+    const raw = this.pattern.substring(startPos, this.pos);
+    return new RegexAstNode.Charset([...chars], isNegated, raw);
   }
 
   _expect(ch) {
@@ -208,6 +211,9 @@ export class RegexParser {
 }
 
 export class RegexToNFABuilder {
+  ENTER = '';
+  EXIT = '↵';
+
   /**
    * @param {string[]} symbols - The alphabet symbols
    */
@@ -216,6 +222,18 @@ export class RegexToNFABuilder {
     this._symbols = symbols;
     // Map symbol string to index
     this._symbolToIndex = new Map(symbols.map((s, i) => [s, i]));
+    this._counts = new Map();
+  }
+
+  _toSubscript(num) {
+    const digits = '₀₁₂₃₄₅₆₇₈₉';
+    return num.toString().split('').map(d => digits[parseInt(d)]).join('');
+  }
+
+  _genName(prefix) {
+    const count = (this._counts.get(prefix) || 0) + 1;
+    this._counts.set(prefix, count);
+    return `${prefix}${this._toSubscript(count)}`;
   }
 
   static _Fragment = class {
@@ -231,16 +249,32 @@ export class RegexToNFABuilder {
 
   build(ast) {
     const fragment = this._buildNode(ast);
-    this._nfa.addStart(fragment.startId);
-    this._nfa.addAccept(fragment.acceptId);
-    this._nfa.enforceEpsilonTransitions();
-    return this._nfa;
+
+    const nfa = this._nfa;
+    nfa.addStart(fragment.startId);
+    nfa.addAccept(fragment.acceptId);
+    nfa.enforceEpsilonTransitions();
+
+    // Simplify names: remove subscript if count is 1
+    const remappedLabels = new Map();
+    const sub1 = this._toSubscript(1);
+    for (const [prefix, count] of this._counts) {
+      if (count === 1) remappedLabels.set(prefix + sub1, prefix);
+    }
+    for (let i = 0; i < nfa.stateLabels.length; i++) {
+      const label = nfa.stateLabels[i];
+      if (remappedLabels.has(label)) {
+        nfa.stateLabels[i] = remappedLabels.get(label);
+      }
+    }
+
+    return nfa;
   }
 
   _buildNode(node) {
     switch (node.constructor) {
       case RegexAstNode.Charset:
-        return this._buildCharset(node.chars, node.negated);
+        return this._buildCharset(node);
       case RegexAstNode.Concat:
         return this._buildConcat(node.parts);
       case RegexAstNode.Alternate:
@@ -253,13 +287,17 @@ export class RegexToNFABuilder {
   }
 
   _buildEmpty() {
-    const stateId = this._nfa.addState();
+    const stateId = this._nfa.addState(this._genName('ε'));
     return this._newFragment(stateId, stateId);
   }
 
-  _buildCharset(chars, negated = false) {
-    const startId = this._nfa.addState();
-    const acceptId = this._nfa.addState();
+  _buildCharset(node) {
+    const { chars, negated, raw } = node;
+    let label = raw || 'c';
+    if (label.length === 1 && label !== '.') label = `'${label}'`;
+
+    const startId = this._nfa.addState(this._genName(this.ENTER + label));
+    const acceptId = this._nfa.addState(this._genName(this.EXIT + label));
 
     let targetIndices = [];
 
@@ -304,8 +342,8 @@ export class RegexToNFABuilder {
   }
 
   _buildAlternate(options) {
-    const startId = this._nfa.addState();
-    const acceptId = this._nfa.addState();
+    const startId = this._nfa.addState(this._genName(this.ENTER + 'OR'));
+    const acceptId = this._nfa.addState(this._genName(this.EXIT + 'OR'));
     for (const option of options) {
       const optionFragment = this._buildNode(option);
       this._nfa.addEpsilonTransition(startId, optionFragment.startId);
