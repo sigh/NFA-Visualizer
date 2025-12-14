@@ -9,6 +9,7 @@
 import { CodeJar } from '../lib/codejar.min.js';
 import { StateTransformation } from './nfa.js';
 import { NFABuilder, parseNFAConfig, buildCodeFromSplit, parseSplitFromCode, expandSymbolClass } from './nfa_builder.js';
+import { DFABuilder } from './dfa_builder.js';
 import { RegexParser, RegexToNFABuilder } from './regex_parser.js';
 import { NFAView } from './nfa_view.js';
 import { NFAVisualizer, compactSymbolLabel } from './visualizer.js';
@@ -35,7 +36,7 @@ const STAGES = {
 const STAGE_LABELS = {
   [STAGES.RAW]: 'Raw',
   [STAGES.EPSILON]: 'ε-Closure',
-  [STAGES.PRUNE]: 'Prunes States',
+  [STAGES.PRUNE]: 'Pruned States',
   [STAGES.MERGE]: 'Merged States',
   [STAGES.EXPAND]: 'Subset Expansion'
 };
@@ -704,6 +705,7 @@ class App {
    */
   precomputeViews() {
     this.pipelineViews = [];
+    this.dfaCache = new Map();
     const numStates = this.currentNFA.numStates();
 
     // Step 0: Raw NFA
@@ -749,17 +751,79 @@ class App {
    * Create a new NFAView based on the current NFA and slider state
    */
   updateViewFromSlider() {
-    if (this.activePipeline === 'dfa') {
-      // TODO: Implement actual DFA views. For now, show the final NFA state
-      // which is the input to the DFA process.
-      this.view = this.pipelineViews[this.pipelineViews.length - 1];
-    } else {
-      const step = parseInt(this.elements.nfaSlider.value);
-      this.view = this.pipelineViews[step];
-    }
-  }
+    const nfaStep = parseInt(this.elements.nfaSlider.value);
+    const nfaView = this.pipelineViews[nfaStep];
 
-  /**
+    if (this.activePipeline === 'dfa') {
+      const dfaStep = parseInt(this.elements.dfaSlider.value);
+      
+      // Check cache for this NFA step
+      if (!this.dfaCache.has(nfaStep)) {
+        // Build DFA from current NFA view
+        // IMPORTANT: If the current view is "Raw" (step 0), it hides effective transitions
+        // (epsilon closures). We must use the "Epsilon Closure" view (step 1) or later
+        // to ensure the DFA builder sees the full transition set.
+        // If the user is at step 0, we use step 1 as the source for DFA construction.
+        const sourceViewStep = nfaStep === 0 ? 1 : nfaStep;
+        const sourceView = this.pipelineViews[sourceViewStep];
+
+        const dfa = DFABuilder.build(sourceView);
+        
+        // Precompute DFA pipeline views
+        const dfaViews = [];
+        const numStates = dfa.numStates();
+
+        // Step 0: Expand (Raw DFA)
+        dfaViews[0] = new NFAView(
+          dfa,
+          StateTransformation.identity(numStates),
+          { showEpsilonTransitions: false }
+        );
+
+        // Step 1: Prune
+        let transformStep1 = StateTransformation.identity(numStates);
+        const deadTransform = dfa.getDeadStates();
+        transformStep1 = transformStep1.compose(deadTransform);
+        
+        dfaViews[1] = new NFAView(
+          dfa,
+          transformStep1,
+          { showEpsilonTransitions: false }
+        );
+
+        // Step 2: Merge (Minimize)
+        const mergeTransform = dfa.getEquivalentStateRemap(transformStep1);
+        dfaViews[2] = new NFAView(
+          dfa,
+          mergeTransform,
+          { showEpsilonTransitions: false }
+        );
+
+        this.dfaCache.set(nfaStep, dfaViews);
+      }
+
+      const dfaViews = this.dfaCache.get(nfaStep);
+      
+      // Determine which view to show based on pipeline configuration
+      const pruneStageIndex = PIPELINES.NFA.indexOf(STAGES.PRUNE);
+      const nfaIsPruned = nfaStep >= pruneStageIndex;
+      
+      // Map slider value to view index
+      // If NFA is already pruned, the DFA pipeline skips the explicit PRUNE step
+      // because the input was already pruned.
+      // DFA Pipeline: [EXPAND, (PRUNE), MERGE]
+      let viewIndex = dfaStep;
+      if (nfaIsPruned && dfaStep >= 1) {
+         // Slider 0 -> View 0 (Expand)
+         // Slider 1 -> View 2 (Merge)
+         viewIndex = 2;
+      }
+      
+      this.view = dfaViews[viewIndex];
+    } else {
+      this.view = nfaView;
+    }
+  }  /**
    * Recompute transform and re-render, preserving viewport and positions
    */
   updateTransformAndRender() {

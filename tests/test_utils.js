@@ -16,6 +16,7 @@ export function test(name, fn) {
   } catch (e) {
     console.log(`✗ ${name}`);
     console.log(`  ${e.message}`);
+    console.log(e.stack);
   }
 }
 
