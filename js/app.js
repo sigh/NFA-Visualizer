@@ -145,7 +145,6 @@ class App {
     };
 
     // Application state
-    this.currentNFA = null;
     this.view = null;
     this.visualizer = null;
     this.pipelineViews = [];
@@ -528,6 +527,9 @@ class App {
   handleBuild() {
     this.hideError();
 
+    this.view = null;
+
+    let nfa = null;
     try {
       if (this.mode === MODES.REGEX) {
         const symbolStr = this.editors.regexSymbols.toString() || '1-9';
@@ -537,7 +539,7 @@ class App {
         const parser = new RegexParser(pattern);
         const ast = parser.parse();
         const builder = new RegexToNFABuilder(symbols);
-        this.currentNFA = builder.build(ast);
+        nfa = builder.build(ast);
       } else {
         // Get code from current input mode
         const code = this.getCurrentCode();
@@ -548,11 +550,12 @@ class App {
         // Build NFA
         // symbols is already expanded to an array by parseNFAConfig
         const builder = new NFABuilder(config, { ...CONFIG, symbols: config.symbols });
-        this.currentNFA = builder.build();
+        nfa = builder.build();
       }
 
       // Precompute views for all pipeline steps
-      this.precomputeViews();
+      this.pipelineViews = this.buildPipeline(nfa, PIPELINES.NFA);
+      this.dfaCache = new Map();
 
       // Update UI
       this.showResults();
@@ -560,7 +563,6 @@ class App {
     } catch (e) {
       this.showError(e.message);
       this.hideResults();
-      this.currentNFA = null;
     }
   }
 
@@ -779,14 +781,6 @@ class App {
     return views;
   }
 
-  /**
-   * Precompute views for all pipeline steps
-   */
-  precomputeViews() {
-    this.pipelineViews = this.buildPipeline(this.currentNFA, PIPELINES.NFA);
-    this.dfaCache = new Map();
-  }
-
   getActivePipelineViews() {
     if (this.activePipeline === PIPELINE_MODES.NFA) {
       return this.pipelineViews;
@@ -833,9 +827,6 @@ class App {
    * Recompute transform and re-render, preserving viewport and positions
    */
   updateTransformAndRender() {
-    if (!this.currentNFA) return;
-
-
     const previousNFA = this.view ? this.view.nfa : null;
 
     const views = this.getActivePipelineViews();
@@ -1151,7 +1142,9 @@ class App {
    * Update test result and trace highlighting
    */
   updateTestResult() {
-    if (!this.currentNFA) {
+    const nfa = this.view?.nfa;
+
+    if (!nfa) {
       this.elements.testResult.textContent = '';
       this.elements.testResult.className = 'test-result';
       this.visualizer.clearHighlight();
@@ -1167,7 +1160,7 @@ class App {
       const invalidSymbols = new Set();
       for (const step of sequence) {
         for (const symbol of step) {
-          if (!this.currentNFA.hasSymbol(symbol)) {
+          if (!nfa.hasSymbol(symbol)) {
             invalidSymbols.add(symbol);
           }
         }
@@ -1179,7 +1172,7 @@ class App {
         return;
       }
 
-      const result = this.currentNFA.run(sequence);
+      const result = nfa.run(sequence);
 
       this.displayTestResult(result, sequence);
 
@@ -1248,7 +1241,7 @@ class App {
       this.showTestResult(`✓ Accepted`, true);
     } else {
       // Dead end if all remaining states are dead
-      const deadTransform = this.currentNFA.getDeadStates();
+      const deadTransform = this.view.nfa.getDeadStates();
       const allDead = lastStep.states.every(id => deadTransform.isDeleted(id));
       const reason = allDead ? 'Dead End' : 'Rejected';
       this.showTestResult(`✗ ${reason}`, false);

@@ -3,21 +3,22 @@
 A web-based tool for visualizing Non-deterministic Finite Automata (NFAs)
 written in JavaScript.
 
-Define a NFA using simple JavaScript functions and instantly see:
+Define a NFA using simple JavaScript functions:
 
-- The state graph with transitions
-- Start, accept, and dead states highlighted
-- Test inputs with step-by-step execution traces
+- See the state graph with transitions
+- See how the NFA can be minimized or converted to a DFA
+- Test inputs with execution traces on the graph
 
 It is hosted at <http://sigh.github.io/NFA-Visualizer>
 
 ## Usage
 
-An NFA is defined with three components:
+An NFA is defined with these components:
 
 1. **startState** - The initial state (or array of states)
 2. **transition(state, symbol)** - Returns the next state(s) for a given input
 3. **accept(state)** - Returns true if the state is accepting
+4. **epsilon** - Returns an array of epsilon transitions for a state
 
 The visualizer will explore all reachable states and display the resulting
 automaton.
