@@ -28,22 +28,22 @@ const STAGES = {
   EPSILON: 'epsilon',
   PRUNE: 'prune',
   MERGE: 'merge',
-  SUBSET: 'subset'
+  EXPAND: 'expand'
 };
 
 // Display Labels for Stages
 const STAGE_LABELS = {
   [STAGES.RAW]: 'Raw',
   [STAGES.EPSILON]: 'ε-Closure',
-  [STAGES.PRUNE]: 'Prune',
-  [STAGES.MERGE]: 'Merge',
-  [STAGES.SUBSET]: 'Subset'
+  [STAGES.PRUNE]: 'Prunes States',
+  [STAGES.MERGE]: 'Merged States',
+  [STAGES.EXPAND]: 'Subset Expansion'
 };
 
 // Pipeline Definitions
 const PIPELINES = {
   NFA: [STAGES.RAW, STAGES.EPSILON, STAGES.PRUNE, STAGES.MERGE],
-  DFA: [STAGES.SUBSET, STAGES.PRUNE, STAGES.MERGE]
+  DFA: [STAGES.EXPAND, STAGES.PRUNE, STAGES.MERGE]
 };
 
 /** SessionStorage keys for persisting input fields */
@@ -132,6 +132,7 @@ class App {
       // DFA Container Elements for positioning
       dfaArrow: document.getElementById('dfa-arrow'),
       dfaTrack: document.getElementById('dfa-track'),
+      pipelineContainer: document.querySelector('.pipeline-container'),
 
       stateList: document.getElementById('state-list')
     };
@@ -143,6 +144,7 @@ class App {
     this.pipelineViews = [];
     this.isRestoring = false;
     this.mode = MODES.SPLIT;
+    this.activePipeline = 'nfa'; // 'nfa' or 'dfa'
 
     // CodeJar editor instances
     this.editors = {
@@ -316,34 +318,50 @@ class App {
 
     // NFA Pipeline slider
     this.elements.nfaSlider.addEventListener('input', () => {
+      this.activePipeline = 'nfa';
       this.updatePipelineUI(this.elements.nfaSlider, this.elements.nfaLabels);
+      this.updatePipelineUI(this.elements.dfaSlider, this.elements.dfaLabels);
       this.updateTransformAndRender();
     });
 
     // NFA Pipeline labels click
     this.elements.nfaLabels.forEach(label => {
       label.addEventListener('click', () => {
+        this.activePipeline = 'nfa';
         const value = label.dataset.value;
         this.elements.nfaSlider.value = value;
         this.updatePipelineUI(this.elements.nfaSlider, this.elements.nfaLabels);
+        this.updatePipelineUI(this.elements.dfaSlider, this.elements.dfaLabels);
         this.updateTransformAndRender();
       });
     });
 
     // DFA Pipeline slider
     this.elements.dfaSlider.addEventListener('input', () => {
+      this.activePipeline = 'dfa';
       this.updatePipelineUI(this.elements.dfaSlider, this.elements.dfaLabels);
-      // TODO: Implement DFA transform logic
+      this.updatePipelineUI(this.elements.nfaSlider, this.elements.nfaLabels);
+      this.updateTransformAndRender();
     });
 
     // DFA Pipeline labels click
     this.elements.dfaLabels.forEach(label => {
       label.addEventListener('click', () => {
+        this.activePipeline = 'dfa';
         const value = label.dataset.value;
         this.elements.dfaSlider.value = value;
         this.updatePipelineUI(this.elements.dfaSlider, this.elements.dfaLabels);
-        // TODO: Implement DFA transform logic
+        this.updatePipelineUI(this.elements.nfaSlider, this.elements.nfaLabels);
+        this.updateTransformAndRender();
       });
+    });
+
+    // DFA Arrow click
+    this.elements.dfaArrow.addEventListener('click', () => {
+      this.activePipeline = 'dfa';
+      this.updatePipelineUI(this.elements.dfaSlider, this.elements.dfaLabels);
+      this.updatePipelineUI(this.elements.nfaSlider, this.elements.nfaLabels);
+      this.updateTransformAndRender();
     });
 
     // Config panel collapse/expand
@@ -562,8 +580,24 @@ class App {
   showResults() {
     // Hide empty state message
     this.elements.emptyState.classList.add('hidden');
+    this.elements.pipelineContainer.classList.add('ready');
+
+    // Check if initial NFA is already a DFA
+    const isDFA = this.pipelineViews[0].isDeterministic();
+    const dfaElements = [
+      this.elements.dfaArrow,
+      this.elements.dfaTrack,
+      this.elements.dfaLabelsContainer
+    ];
+
+    if (isDFA) {
+      dfaElements.forEach(el => el.style.display = 'none');
+    } else {
+      dfaElements.forEach(el => el.style.display = '');
+    }
 
     // Reset pipeline sliders
+    this.activePipeline = 'nfa';
     this.elements.nfaSlider.value = 0;
     this.updatePipelineUI(this.elements.nfaSlider, this.elements.nfaLabels);
 
@@ -594,17 +628,27 @@ class App {
     const max = parseInt(slider.max);
     const percentage = (value / max) * 100;
 
+    // Determine active state based on pipeline selection
+    const isNFA = slider === this.elements.nfaSlider;
+    const isActive = isNFA ? true : this.activePipeline === 'dfa';
+
     // Update slider fill
     slider.style.setProperty('--slider-progress', `${percentage}%`);
 
     // Update labels
     labels.forEach(label => {
       const labelValue = parseInt(label.dataset.value);
-      label.classList.toggle('active', labelValue <= value);
+      label.classList.toggle('active', isActive && labelValue <= value);
     });
 
+    // Update visual state for DFA controls
+    if (!isNFA) {
+      this.elements.dfaSlider.classList.toggle('inactive', !isActive);
+      this.elements.dfaArrow.classList.toggle('active', isActive);
+    }
+
     // If this is the NFA slider, update the DFA elements position
-    if (slider === this.elements.nfaSlider) {
+    if (isNFA) {
       // Use grid row positioning
       // Value 0 -> Row 1
       // Value 1 -> Row 2
@@ -705,8 +749,14 @@ class App {
    * Create a new NFAView based on the current NFA and slider state
    */
   updateViewFromSlider() {
-    const step = parseInt(this.elements.nfaSlider.value);
-    this.view = this.pipelineViews[step];
+    if (this.activePipeline === 'dfa') {
+      // TODO: Implement actual DFA views. For now, show the final NFA state
+      // which is the input to the DFA process.
+      this.view = this.pipelineViews[this.pipelineViews.length - 1];
+    } else {
+      const step = parseInt(this.elements.nfaSlider.value);
+      this.view = this.pipelineViews[step];
+    }
   }
 
   /**
