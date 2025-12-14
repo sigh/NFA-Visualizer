@@ -14,15 +14,14 @@ export class DFABuilder {
   static build(view) {
     // Ensure we are working with a view that exposes effective transitions
     if (view.showEpsilonTransitions) {
-      console.warn('DFABuilder: Building from a view with explicit epsilon transitions. ' +
-        'This may result in incorrect DFA if the view hides effective transitions.');
+      throw new Error('DFABuilder: Cannot build from a view with explicit epsilon transitions.');
     }
 
     const dfa = new NFA(view.nfa.symbols);
-    
+
     // 1. Identify Start States
     const startStates = DFABuilder._getStartStates(view);
-    
+
     // 2. Initialize Worklist
     // Map of StateKey -> DFA State ID
     const dfaStateMap = new Map();
@@ -31,7 +30,7 @@ export class DFABuilder {
     const startKey = DFABuilder._getStateKey(startStates);
     const startId = dfa.addState(startKey);
     dfa.addStart(startId);
-    
+
     if (DFABuilder._isAcceptingSet(view, startStates)) {
       dfa.addAccept(startId);
     }
@@ -55,7 +54,7 @@ export class DFABuilder {
         if (nextSet && nextSet.size > 0) {
           const nextSetArray = [...nextSet];
           const nextKey = DFABuilder._getStateKey(nextSetArray);
-          
+
           let nextId;
           if (dfaStateMap.has(nextKey)) {
             nextId = dfaStateMap.get(nextKey);
@@ -72,6 +71,8 @@ export class DFABuilder {
         }
       }
     }
+
+    dfa.parentNfa = view.nfa;
 
     return dfa;
   }
@@ -107,7 +108,7 @@ export class DFABuilder {
    */
   static _aggregateTransitions(view, stateIds) {
     const transitionsBySymbol = new Map();
-    
+
     for (const sourceId of stateIds) {
       const transitions = view.getTransitionsFrom(sourceId);
       for (const [target, symbols] of transitions) {

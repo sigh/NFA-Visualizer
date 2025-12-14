@@ -68,6 +68,12 @@ const MODES = {
   REGEX: 'regex'
 };
 
+/** Pipeline modes enum */
+const PIPELINE_MODES = {
+  NFA: 'nfa',
+  DFA: 'dfa'
+};
+
 // ============================================
 // Application Class
 // ============================================
@@ -145,7 +151,7 @@ class App {
     this.pipelineViews = [];
     this.isRestoring = false;
     this.mode = MODES.SPLIT;
-    this.activePipeline = 'nfa'; // 'nfa' or 'dfa'
+    this.activePipeline = PIPELINE_MODES.NFA;
 
     // CodeJar editor instances
     this.editors = {
@@ -319,7 +325,7 @@ class App {
 
     // NFA Pipeline slider
     this.elements.nfaSlider.addEventListener('input', () => {
-      this.activePipeline = 'nfa';
+      this.activePipeline = PIPELINE_MODES.NFA;
       this.updatePipelineUI(this.elements.nfaSlider, this.elements.nfaLabels);
       this.updatePipelineUI(this.elements.dfaSlider, this.elements.dfaLabels);
       this.updateTransformAndRender();
@@ -328,7 +334,7 @@ class App {
     // NFA Pipeline labels click
     this.elements.nfaLabels.forEach(label => {
       label.addEventListener('click', () => {
-        this.activePipeline = 'nfa';
+        this.activePipeline = PIPELINE_MODES.NFA;
         const value = label.dataset.value;
         this.elements.nfaSlider.value = value;
         this.updatePipelineUI(this.elements.nfaSlider, this.elements.nfaLabels);
@@ -339,7 +345,7 @@ class App {
 
     // DFA Pipeline slider
     this.elements.dfaSlider.addEventListener('input', () => {
-      this.activePipeline = 'dfa';
+      this.activePipeline = PIPELINE_MODES.DFA;
       this.updatePipelineUI(this.elements.dfaSlider, this.elements.dfaLabels);
       this.updatePipelineUI(this.elements.nfaSlider, this.elements.nfaLabels);
       this.updateTransformAndRender();
@@ -348,7 +354,7 @@ class App {
     // DFA Pipeline labels click
     this.elements.dfaLabels.forEach(label => {
       label.addEventListener('click', () => {
-        this.activePipeline = 'dfa';
+        this.activePipeline = PIPELINE_MODES.DFA;
         const value = label.dataset.value;
         this.elements.dfaSlider.value = value;
         this.updatePipelineUI(this.elements.dfaSlider, this.elements.dfaLabels);
@@ -359,7 +365,7 @@ class App {
 
     // DFA Arrow click
     this.elements.dfaArrow.addEventListener('click', () => {
-      this.activePipeline = 'dfa';
+      this.activePipeline = PIPELINE_MODES.DFA;
       this.updatePipelineUI(this.elements.dfaSlider, this.elements.dfaLabels);
       this.updatePipelineUI(this.elements.nfaSlider, this.elements.nfaLabels);
       this.updateTransformAndRender();
@@ -584,41 +590,39 @@ class App {
     this.elements.pipelineContainer.classList.add('ready');
 
     // Check if initial NFA is already a DFA
-    const isDFA = this.pipelineViews[0].isDeterministic();
+    const isDeterministic = this.pipelineViews[0].isDeterministic();
     const dfaElements = [
       this.elements.dfaArrow,
       this.elements.dfaTrack,
       this.elements.dfaLabelsContainer
     ];
 
-    if (isDFA) {
+    if (isDeterministic) {
       dfaElements.forEach(el => el.style.display = 'none');
     } else {
       dfaElements.forEach(el => el.style.display = '');
     }
 
     // Reset pipeline sliders
-    this.activePipeline = 'nfa';
+    this.activePipeline = PIPELINE_MODES.NFA;
     this.elements.nfaSlider.value = 0;
     this.updatePipelineUI(this.elements.nfaSlider, this.elements.nfaLabels);
 
     this.elements.dfaSlider.value = 0;
     this.updatePipelineUI(this.elements.dfaSlider, this.elements.dfaLabels);
 
-    // Create view based on slider state
-    this.updateViewFromSlider();
+    this.updateTransformAndRender();
+  }
 
-    // Update stats display
-    this.updateStatsDisplay();
+  getDfaPipelineAtNfaStep(nfaStep) {
+    // Update DFA slider logic based on NFA state
+    // If the NFA pipeline has reached the PRUNE stage, remove PRUNE from the DFA pipeline
+    const pruneStageIndex = PIPELINES.NFA.indexOf(STAGES.PRUNE);
+    const nfaIsPruned = nfaStep >= pruneStageIndex;
 
-    // Build state list
-    this.updateStateList();
-
-    // Render visualization
-    this.visualizer.render(this.view);
-
-    // Run test with current input
-    this.updateTestResult();
+    return nfaIsPruned
+      ? PIPELINES.DFA.filter(s => s !== STAGES.PRUNE)
+      : PIPELINES.DFA;
   }
 
   /**
@@ -631,7 +635,7 @@ class App {
 
     // Determine active state based on pipeline selection
     const isNFA = slider === this.elements.nfaSlider;
-    const isActive = isNFA ? true : this.activePipeline === 'dfa';
+    const isActive = isNFA ? true : this.activePipeline === PIPELINE_MODES.DFA;
 
     // Update slider fill
     slider.style.setProperty('--slider-progress', `${percentage}%`);
@@ -662,14 +666,7 @@ class App {
         this.elements.dfaLabelsContainer
       ].forEach(el => el.style.gridRowStart = rowStart);
 
-      // Update DFA slider logic based on NFA state
-      // If the NFA pipeline has reached the PRUNE stage, remove PRUNE from the DFA pipeline
-      const pruneStageIndex = PIPELINES.NFA.indexOf(STAGES.PRUNE);
-      const nfaIsPruned = value >= pruneStageIndex;
-
-      const dfaPipeline = nfaIsPruned
-        ? PIPELINES.DFA.filter(s => s !== STAGES.PRUNE)
-        : PIPELINES.DFA;
+      const dfaPipeline = this.getDfaPipelineAtNfaStep(value);
 
       // Update layout variables for DFA track
       this.setTrackLayout(this.elements.dfaTrack, this.elements.dfaLabelsContainer, dfaPipeline);
@@ -701,148 +698,176 @@ class App {
     }
   }
   /**
+   * Build a pipeline of views for a given NFA based on stage definitions
+   * @param {NFA} nfa - The source NFA
+   * @param {string[]} stages - Array of stage IDs
+   * @returns {NFAView[]} Array of views corresponding to the stages
+   */
+  buildPipeline(nfa, stages) {
+    const views = [];
+    const numStates = nfa.numStates();
+
+    // Keep track of the current transform as we progress through stages
+    let currentTransform = StateTransformation.identity(numStates);
+
+    for (const stage of stages) {
+      let view;
+
+      switch (stage) {
+        case STAGES.RAW:
+          // Identity transform, show explicit epsilon transitions
+          view = new NFAView(
+            nfa,
+            StateTransformation.identity(numStates),
+            { showEpsilonTransitions: true }
+          );
+          break;
+
+        case STAGES.EPSILON:
+          // Identity transform, hide explicit epsilon transitions (implicit closure)
+          view = new NFAView(
+            nfa,
+            StateTransformation.identity(numStates),
+            { showEpsilonTransitions: false }
+          );
+          break;
+
+        case STAGES.EXPAND:
+          // Same as EPSILON but conceptually different for DFA (start of pipeline)
+          view = new NFAView(
+            nfa,
+            StateTransformation.identity(numStates),
+            { showEpsilonTransitions: false }
+          );
+          break;
+
+        case STAGES.PRUNE:
+          // Hide dead states
+          const deadTransform = nfa.getDeadStates();
+          currentTransform = currentTransform.compose(deadTransform);
+
+          view = new NFAView(
+            nfa,
+            currentTransform,
+            { showEpsilonTransitions: false }
+          );
+          break;
+
+        case STAGES.MERGE:
+          // Merge equivalent states
+          const mergeTransform = nfa.getEquivalentStateRemap(currentTransform);
+          // Note: getEquivalentStateRemap builds upon the input transform,
+          // so we don't need to compose it manually if we pass currentTransform
+          // However, for consistency with how we track currentTransform:
+          currentTransform = mergeTransform;
+
+          view = new NFAView(
+            nfa,
+            currentTransform,
+            { showEpsilonTransitions: false }
+          );
+          break;
+
+        default:
+          console.warn(`Unknown pipeline stage: ${stage}`);
+          view = new NFAView(nfa, currentTransform);
+      }
+
+      views.push(view);
+    }
+
+    return views;
+  }
+
+  /**
    * Precompute views for all pipeline steps
    */
   precomputeViews() {
-    this.pipelineViews = [];
+    this.pipelineViews = this.buildPipeline(this.currentNFA, PIPELINES.NFA);
     this.dfaCache = new Map();
-    const numStates = this.currentNFA.numStates();
+  }
 
-    // Step 0: Raw NFA
-    // Identity transform, show explicit epsilon transitions
-    this.pipelineViews[0] = new NFAView(
-      this.currentNFA,
-      StateTransformation.identity(numStates),
-      { showEpsilonTransitions: true }
-    );
+  getActivePipelineViews() {
+    if (this.activePipeline === PIPELINE_MODES.NFA) {
+      return this.pipelineViews;
+    }
 
-    // Step 1: Epsilon Closure
-    // Identity transform, hide explicit epsilon transitions (implicit closure)
-    this.pipelineViews[1] = new NFAView(
-      this.currentNFA,
-      StateTransformation.identity(numStates),
-      { showEpsilonTransitions: false }
-    );
+    const nfaStep = parseInt(this.elements.nfaSlider.value);
 
-    // Step 2: Prune States
-    // Hide dead states
-    let transformStep2 = StateTransformation.identity(numStates);
-    const deadTransform = this.currentNFA.getDeadStates();
-    transformStep2 = transformStep2.compose(deadTransform);
+    // Check cache for this NFA step
+    if (!this.dfaCache.has(nfaStep)) {
+      // Build DFA from current NFA view
+      // IMPORTANT: If the current view is "Raw" (step 0), it hides effective transitions
+      // (epsilon closures). We must use the "Epsilon Closure" view (step 1) or later
+      // to ensure the DFA builder sees the full transition set.
+      // If the user is at step 0, we use step 1 as the source for DFA construction.
+      const sourceViewStep = nfaStep === 0 ? 1 : nfaStep;
+      const sourceView = this.pipelineViews[sourceViewStep];
 
-    this.pipelineViews[2] = new NFAView(
-      this.currentNFA,
-      transformStep2,
-      { showEpsilonTransitions: false }
-    );
+      const dfa = DFABuilder.build(sourceView);
 
-    // Step 3: Merge States
-    // Merge equivalent states (on top of pruned states)
-    const mergeTransform = this.currentNFA.getEquivalentStateRemap(transformStep2);
+      // Precompute DFA pipeline views using the generic builder
+      const pipeline = this.getDfaPipelineAtNfaStep(nfaStep);
+      const dfaViews = this.buildPipeline(dfa, pipeline);
+      this.dfaCache.set(nfaStep, dfaViews);
+    }
 
-    this.pipelineViews[3] = new NFAView(
-      this.currentNFA,
-      mergeTransform,
-      { showEpsilonTransitions: false }
-    );
+    return this.dfaCache.get(nfaStep);
   }
 
   /**
    * Create a new NFAView based on the current NFA and slider state
    */
-  updateViewFromSlider() {
-    const nfaStep = parseInt(this.elements.nfaSlider.value);
-    const nfaView = this.pipelineViews[nfaStep];
-
-    if (this.activePipeline === 'dfa') {
+  getViewFromSlider() {
+    if (this.activePipeline === PIPELINE_MODES.DFA) {
+      const dfaViews = this.getActivePipelineViews();
       const dfaStep = parseInt(this.elements.dfaSlider.value);
-      
-      // Check cache for this NFA step
-      if (!this.dfaCache.has(nfaStep)) {
-        // Build DFA from current NFA view
-        // IMPORTANT: If the current view is "Raw" (step 0), it hides effective transitions
-        // (epsilon closures). We must use the "Epsilon Closure" view (step 1) or later
-        // to ensure the DFA builder sees the full transition set.
-        // If the user is at step 0, we use step 1 as the source for DFA construction.
-        const sourceViewStep = nfaStep === 0 ? 1 : nfaStep;
-        const sourceView = this.pipelineViews[sourceViewStep];
-
-        const dfa = DFABuilder.build(sourceView);
-        
-        // Precompute DFA pipeline views
-        const dfaViews = [];
-        const numStates = dfa.numStates();
-
-        // Step 0: Expand (Raw DFA)
-        dfaViews[0] = new NFAView(
-          dfa,
-          StateTransformation.identity(numStates),
-          { showEpsilonTransitions: false }
-        );
-
-        // Step 1: Prune
-        let transformStep1 = StateTransformation.identity(numStates);
-        const deadTransform = dfa.getDeadStates();
-        transformStep1 = transformStep1.compose(deadTransform);
-        
-        dfaViews[1] = new NFAView(
-          dfa,
-          transformStep1,
-          { showEpsilonTransitions: false }
-        );
-
-        // Step 2: Merge (Minimize)
-        const mergeTransform = dfa.getEquivalentStateRemap(transformStep1);
-        dfaViews[2] = new NFAView(
-          dfa,
-          mergeTransform,
-          { showEpsilonTransitions: false }
-        );
-
-        this.dfaCache.set(nfaStep, dfaViews);
-      }
-
-      const dfaViews = this.dfaCache.get(nfaStep);
-      
-      // Determine which view to show based on pipeline configuration
-      const pruneStageIndex = PIPELINES.NFA.indexOf(STAGES.PRUNE);
-      const nfaIsPruned = nfaStep >= pruneStageIndex;
-      
-      // Map slider value to view index
-      // If NFA is already pruned, the DFA pipeline skips the explicit PRUNE step
-      // because the input was already pruned.
-      // DFA Pipeline: [EXPAND, (PRUNE), MERGE]
-      let viewIndex = dfaStep;
-      if (nfaIsPruned && dfaStep >= 1) {
-         // Slider 0 -> View 0 (Expand)
-         // Slider 1 -> View 2 (Merge)
-         viewIndex = 2;
-      }
-      
-      this.view = dfaViews[viewIndex];
+      return dfaViews[dfaStep];
     } else {
-      this.view = nfaView;
+      const nfaStep = parseInt(this.elements.nfaSlider.value);
+      return this.pipelineViews[nfaStep];
     }
-  }  /**
+  }
+
+  /**
    * Recompute transform and re-render, preserving viewport and positions
    */
   updateTransformAndRender() {
     if (!this.currentNFA) return;
 
-    this.updateViewFromSlider();
 
-    // Save current viewport and positions
-    const viewport = this.visualizer.getViewport();
-    const positions = this.visualizer.getNodePositions();
+    const previousNFA = this.view ? this.view.nfa : null;
 
-    // Re-render with same positions
-    this.visualizer.render(this.view, positions);
+    const views = this.getActivePipelineViews();
 
-    // Restore viewport
-    this.visualizer.setViewport(viewport);
+    const slider = this.activePipeline === PIPELINE_MODES.DFA
+      ? this.elements.dfaSlider
+      : this.elements.nfaSlider;
+    this.view = views[parseInt(slider.value)];
+    const newNFA = this.view.nfa;
+
+    // Save current viewport and positions ONLY if the underlying NFA hasn't changed
+    // If we switched from NFA to DFA (or vice versa), or rebuilt the DFA, we want a fresh layout.
+    let viewport = null;
+    let positions = null;
+
+    if (previousNFA === newNFA) {
+      viewport = this.visualizer.getViewport();
+      positions = this.visualizer.getNodePositions();
+    }
+
+    // Re-render
+    this.visualizer.render(this.view, positions, {
+      stateNamePrefix: this.getStateNamePrefix(),
+    });
+
+    // Restore viewport if we saved it
+    if (viewport) {
+      this.visualizer.setViewport(viewport);
+    }
 
     // Update stats display
-    this.updateStatsDisplay();
+    this.updateStatsDisplay(this.view, views[views.length - 1]);
     this.updateStateList();
     this.updateTestResult();
   }
@@ -850,20 +875,20 @@ class App {
   /**
    * Update the stats display based on current NFA and view
    */
-  updateStatsDisplay() {
-    const stats = this.view.getStats();
+  updateStatsDisplay(view, finalView) {
+    const stats = view.getStats();
 
     this.elements.statStates.textContent = stats.total;
 
     // Determine machine type
     let type = 'NFA';
-    const isDeterministic = this.view.isDeterministic();
-    const hasEpsilons = this.view.showEpsilonTransitions && this.view.nfa.epsilonTransitions.size > 0;
+    const isDeterministic = view.isDeterministic();
+    const hasEpsilons = view.showEpsilonTransitions && view.nfa.epsilonTransitions.size > 0;
 
     if (hasEpsilons) {
       type = 'ε-NFA';
     } else if (isDeterministic) {
-      const minStates = this.pipelineViews[3].getStats().total;
+      const minStates = finalView.getStats().total;
       if (stats.total === minStates) {
         type = 'Min-DFA';
       } else {
@@ -895,7 +920,8 @@ class App {
       if (!this.view.isCanonical(state.id)) continue;
 
       const sources = this.view.mergedSources.get(state.id) || [state.id];
-      const item = this.createStateItem(state, sources);
+      const resolvedSources = this.view.getResolvedSources(state.id);
+      const item = this.createStateItem(state, sources, resolvedSources);
       this.elements.stateList.appendChild(item);
     }
   }
@@ -903,9 +929,10 @@ class App {
   /**
    * Create a state item DOM element
    * @param {Object} state - The state object
-   * @param {number[]} sources - Array of source state IDs for this (possibly merged) state
+   * @param {Array<number>} sources - Array of source state IDs for this (possibly merged) state
+   * @param {Array<{id: number, label: string}>} resolvedSources - Array of resolved source states for this (possibly merged) state
    */
-  createStateItem(state, sources) {
+  createStateItem(state, sources, resolvedSources) {
     const item = document.createElement('div');
     item.className = 'state-item';
     item.dataset.stateId = state.id;
@@ -916,31 +943,43 @@ class App {
 
     const idSpan = document.createElement('span');
     idSpan.className = 'state-id';
-    // Use prime notation for merged states
+
     const isMerged = sources.length > 1;
-    idSpan.textContent = isMerged ? `q${state.id}'` : `q${state.id}`;
+    const prefix = this.getStateNamePrefix();
+    const suffix = isMerged ? "'" : "";
+
+    let stateName = `${prefix}${state.id}${suffix}`;
+    idSpan.textContent = stateName;
+
+    const nfa = this.view.nfa;
 
     // For merged states, show all source states with their labels on separate lines
-    if (isMerged) {
+    if (isMerged || nfa.parentNfa) {
       header.appendChild(idSpan);
       header.appendChild(document.createTextNode(' = '));
 
       const sourcesList = document.createElement('div');
       sourcesList.className = 'state-sources-list';
-      for (const id of sources) {
+      for (const { id, label } of resolvedSources) {
         const sourceDiv = document.createElement('div');
         sourceDiv.className = 'state-source-item';
-        const sourceLabel = this.currentNFA.stateLabels[id];
-        sourceDiv.textContent = sourceLabel != null
-          ? `q${id}: ${sourceLabel}`
-          : `q${id}`;
+        sourceDiv.textContent = label ? `q${id}: ${label}` : `q${id}`;
         sourcesList.appendChild(sourceDiv);
       }
       header.appendChild(sourcesList);
     } else {
       const labelSpan = document.createElement('span');
       labelSpan.className = 'state-label';
-      labelSpan.textContent = this.currentNFA.stateLabels[state.id] ?? `q${state.id}`;
+      // Use the NFA from the current view to get labels
+      // If it's a DFA, the label is the set of NFA states (e.g. "0,1")
+      const labelText = this.view.nfa.stateLabels[state.id];
+
+      if (labelText) {
+        labelSpan.textContent = `${labelText}`;
+      } else {
+        labelSpan.textContent = `${prefix}${state.id}`;
+      }
+
       header.append(idSpan, ' = ', labelSpan);
     }
 
@@ -1020,6 +1059,7 @@ class App {
       epsilonTargets = this.view.getEpsilonTransitionsFrom(stateId);
     }
 
+    const prefix = this.getStateNamePrefix();
     if (byCanonicalTarget.size === 0 && epsilonTargets.size === 0) {
       const row = document.createElement('div');
       row.className = 'transition-row';
@@ -1029,13 +1069,17 @@ class App {
       // Regular transitions
       for (const [canonical, symbolSet] of byCanonicalTarget) {
         const isMerged = this.view.isMergedState(canonical);
-        transitionsEl.appendChild(this.createTransitionRow(canonical, [...symbolSet], isMerged));
+        const suffix = isMerged ? "'" : "";
+        const toStateName = `${prefix}${canonical}${suffix}`;
+        transitionsEl.appendChild(this.createTransitionRow(toStateName, [...symbolSet], isMerged));
       }
 
       // Epsilon transitions
       for (const canonical of epsilonTargets) {
         const isMerged = this.view.isMergedState(canonical);
-        transitionsEl.appendChild(this.createTransitionRow(canonical, ['ε'], isMerged));
+        const suffix = isMerged ? "'" : "";
+        const toStateName = `${prefix}${canonical}${suffix}`;
+        transitionsEl.appendChild(this.createTransitionRow(toStateName, ['ε'], isMerged));
       }
     }
     transitionsEl.classList.remove('hidden');
@@ -1043,17 +1087,18 @@ class App {
 
   /**
    * Create a transition row DOM element
-   * @param {number} toState - Target state ID
+   * @param {string} toStateName - Target state name
    * @param {string[]} symbols - Transition symbols
    * @param {boolean} isMerged - Whether target state is a merged state
    */
-  createTransitionRow(toState, symbols, isMerged = false) {
+  createTransitionRow(toStateName, symbols, isMerged = false) {
     const row = document.createElement('div');
     row.className = 'transition-row';
 
     const stateSpan = document.createElement('span');
     stateSpan.className = 'state-id';
-    stateSpan.textContent = isMerged ? `q${toState}'` : `q${toState}`;
+
+    stateSpan.textContent = toStateName;
 
     const symbolSpan = document.createElement('span');
     const label = compactSymbolLabel(symbols);
@@ -1229,6 +1274,10 @@ class App {
   showTestResult(message, accepted) {
     this.elements.testResult.textContent = message;
     this.elements.testResult.className = `test-result ${accepted ? 'accepted' : 'rejected'}`;
+  }
+
+  getStateNamePrefix() {
+    return this.activePipeline === PIPELINE_MODES.DFA ? "q'" : 'q';
   }
 
   // ============================================

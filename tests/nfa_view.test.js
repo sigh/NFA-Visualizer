@@ -404,4 +404,63 @@ describe('NFAView', () => {
       assert.strictEqual(startInfo.isDead, false);
     });
   });
+
+  describe('getResolvedSources', () => {
+    test('returns sources for simple identity transform', () => {
+      const nfa = createTestNFA();
+      nfa.addState(); // q0
+      nfa.stateLabels[0] = 'q0';
+      const transform = StateTransformation.identity(1);
+      const view = new NFAView(nfa, transform);
+
+      const sources = view.getResolvedSources(0);
+      assert.strictEqual(sources.length, 1);
+      assert.strictEqual(sources[0].id, 0);
+      assert.strictEqual(sources[0].label, 'q0');
+    });
+
+    test('returns multiple sources for merged states', () => {
+      const nfa = createTestNFA();
+      nfa.addState(); // q0
+      nfa.addState(); // q1
+      nfa.stateLabels[0] = 'q0';
+      nfa.stateLabels[1] = 'q1';
+
+      // Map both to 0
+      const transform = new StateTransformation([0, 0]);
+      const view = new NFAView(nfa, transform);
+
+      const sources = view.getResolvedSources(0);
+      assert.strictEqual(sources.length, 2);
+      // Order depends on implementation, but usually insertion order or sorted
+      const ids = sources.map(s => s.id).sort();
+      assert.deepStrictEqual(ids, [0, 1]);
+    });
+
+    test('resolves sources through parentNfa', () => {
+      const baseNfa = createTestNFA();
+      baseNfa.addState(); // 0
+      baseNfa.addState(); // 1
+      baseNfa.addState(); // 2
+      baseNfa.stateLabels = ['A', 'B', 'C'];
+
+      const derivedNfa = createTestNFA();
+      derivedNfa.addState(); // 0
+      derivedNfa.parentNfa = baseNfa;
+      // State 0 in derived NFA represents {0, 2} from base NFA
+      derivedNfa.stateLabels[0] = '0,2';
+
+      const transform = StateTransformation.identity(1);
+      const view = new NFAView(derivedNfa, transform);
+
+      const sources = view.getResolvedSources(0);
+      assert.strictEqual(sources.length, 2);
+
+      assert.strictEqual(sources[0].id, 0);
+      assert.strictEqual(sources[0].label, 'A');
+
+      assert.strictEqual(sources[1].id, 2);
+      assert.strictEqual(sources[1].label, 'C');
+    });
+  });
 });

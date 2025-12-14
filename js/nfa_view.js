@@ -258,4 +258,30 @@ export class NFAView {
     // stateId is the original state ID.
     return this.nfa.epsilonTransitions.get(stateId) || new Set();
   }
+
+  /**
+   * Get the resolved source states for a given canonical state ID.
+   * If the NFA has a parent NFA (e.g. it's a DFA created from an NFA),
+   * this resolves the sources back to the parent NFA's state IDs.
+   *
+   * @param {number} stateId - The canonical state ID in this view
+   * @returns {Array<{id: number, label: string}>} List of source states with their IDs and labels
+   */
+  getResolvedSources(stateId) {
+    let sources = this.mergedSources.get(stateId) || [];
+
+    if (this.nfa.parentNfa) {
+      const baseIds = new Set();
+      for (const sourceId of sources) {
+        const label = this.nfa.stateLabels[sourceId] || '';
+        for (const id of label.split(',').map(s => parseInt(s, 10))) {
+          baseIds.add(id);
+        }
+      }
+      sources = [...baseIds].sort((a, b) => a - b);
+    }
+
+    const baseNfa = this.nfa.parentNfa || this.nfa;
+    return sources.map(id => ({ id, label: baseNfa.stateLabels[id] || '' }));
+  }
 }

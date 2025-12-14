@@ -364,9 +364,12 @@ export class NFAVisualizer {
    * Render the NFA visualization
    * @param {import('./nfa_view.js').NFAView} view - The NFA view to render
    * @param {Map<number, {x: number, y: number}>} [positions] - Optional preset positions
+   * @param {Object} [options] - Render options
+   * @param {string} [options.stateNamePrefix] - What prefix to use for state names
    */
-  render(view, positions = null) {
+  render(view, positions = null, options = {}) {
     this.view = view;
+    this.renderOptions = options;
     const elements = this.buildElements();
 
     // Destroy existing instance
@@ -526,7 +529,7 @@ export class NFAVisualizer {
         data: {
           id: `s${state.id}`,
           label: this.getStateLabel(state.id, sources),
-          fullLabel: this.getFullStateLabel(state.id, sources)
+          fullLabel: this.getFullStateLabel(state.id)
         },
         classes: classes.join(' ')
       });
@@ -645,34 +648,28 @@ export class NFAVisualizer {
    * @returns {string}
    */
   getStateLabel(stateId, sources) {
+    const prefix = this.renderOptions?.stateNamePrefix || 'q';
+
     // If this node absorbed other states, show with prime notation
     if (sources.length > 1) {
-      return `q${stateId}'`;
+      return `${prefix}${stateId}'`;
     }
-    return `q${stateId}`;
+
+    return `${prefix}${stateId}`;
   }
 
   /**
    * Get full label for a state (used in tooltips)
    * @param {number} stateId
-   * @param {number[]} sources - Source state IDs for this node
    * @returns {string}
    */
-  getFullStateLabel(stateId, sources) {
-    // If this node absorbed other states, list each source on its own line
-    if (sources.length > 1) {
-      const sourceLines = sources.map(id => {
-        const label = this.view.nfa.stateLabels[id];
-        return label !== null && label !== undefined ? `q${id}: ${label}` : `q${id}`;
-      });
-      return sourceLines.join('\n');
-    }
-
-    const stateLabel = this.view.nfa.stateLabels[stateId];
-    if (stateLabel === null || stateLabel === undefined) {
-      return `q${stateId}`;
-    }
-    return `q${stateId}: ${stateLabel}`;
+  getFullStateLabel(stateId) {
+    // List each source on its own line
+    const resolvedSources = this.view.getResolvedSources(stateId);
+    const sourceLines = resolvedSources.map(({ id, label }) => {
+      return label ? `q${id}: ${label}` : `q${id}`;
+    });
+    return sourceLines.join('\n');
   }
 
   /**
