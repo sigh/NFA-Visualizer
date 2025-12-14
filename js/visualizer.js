@@ -586,6 +586,24 @@ export class NFAVisualizer {
   }
 
   /**
+   * Run the layout on the current graph
+   * @param {boolean} animate
+   */
+  runLayout(animate = false) {
+    if (!this.cy) return;
+
+    const layoutOptions = this.getLayoutOptions();
+    layoutOptions.animate = animate;
+    if (animate) {
+      layoutOptions.animationDuration = 500;
+      layoutOptions.animationEasing = 'ease-in-out';
+    }
+
+    const layout = this.cy.layout(layoutOptions);
+    layout.run();
+  }
+
+  /**
    * Get layout options for the graph
    * @returns {Object} Layout options
    */

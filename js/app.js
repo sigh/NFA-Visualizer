@@ -22,6 +22,30 @@ const CONFIG = {
   maxStates: 500
 };
 
+// Pipeline Stage IDs
+const STAGES = {
+  RAW: 'raw',
+  EPSILON: 'epsilon',
+  PRUNE: 'prune',
+  MERGE: 'merge',
+  SUBSET: 'subset'
+};
+
+// Display Labels for Stages
+const STAGE_LABELS = {
+  [STAGES.RAW]: 'Raw',
+  [STAGES.EPSILON]: 'ε-Closure',
+  [STAGES.PRUNE]: 'Prune',
+  [STAGES.MERGE]: 'Merge',
+  [STAGES.SUBSET]: 'Subset'
+};
+
+// Pipeline Definitions
+const PIPELINES = {
+  NFA: [STAGES.RAW, STAGES.EPSILON, STAGES.PRUNE, STAGES.MERGE],
+  DFA: [STAGES.SUBSET, STAGES.PRUNE, STAGES.MERGE]
+};
+
 /** SessionStorage keys for persisting input fields */
 const STORAGE_KEYS = {
   symbols: 'nfa-symbols',
@@ -79,6 +103,7 @@ class App {
 
       // Actions
       buildBtn: document.getElementById('build-btn'),
+      refreshLayoutBtn: document.getElementById('refresh-layout-btn'),
 
       // Output
       errorDisplay: document.getElementById('error-display'),
@@ -99,8 +124,15 @@ class App {
       statAccept: document.getElementById('stat-accept'),
       statLive: document.getElementById('stat-live'),
       statDead: document.getElementById('stat-dead'),
-      pipelineSlider: document.getElementById('pipeline-slider'),
-      pipelineLabels: document.querySelectorAll('.pipeline-step'),
+      nfaSlider: document.getElementById('nfa-slider'),
+      nfaTrack: document.getElementById('nfa-track'),
+      nfaLabelsContainer: document.getElementById('nfa-labels'),
+      dfaSlider: document.getElementById('dfa-slider'),
+      dfaLabelsContainer: document.getElementById('dfa-labels'),
+      // DFA Container Elements for positioning
+      dfaArrow: document.getElementById('dfa-arrow'),
+      dfaTrack: document.getElementById('dfa-track'),
+
       stateList: document.getElementById('state-list')
     };
 
@@ -186,11 +218,61 @@ class App {
   // ============================================
 
   /**
+   * Helper to set CSS variables for track layout
+   */
+  setTrackLayout(trackEl, labelsEl, steps) {
+    const numSteps = steps.length;
+    const numIntervals = Math.max(1, numSteps - 1);
+
+    // Set variables on the track element (which contains the slider)
+    trackEl.style.setProperty('--track-steps', numSteps);
+    trackEl.style.setProperty('--track-intervals', numIntervals);
+
+    // Set variables on the labels container
+    labelsEl.style.setProperty('--track-steps', numSteps);
+  }
+
+  /**
+   * Initialize pipeline UI from config
+   */
+  initPipelineUI() {
+    // Helper to create steps
+    const createSteps = (container, stageIds) => {
+      container.innerHTML = '';
+      stageIds.forEach((stageId, index) => {
+        const step = document.createElement('div');
+        step.className = 'pipeline-step';
+        step.dataset.value = index;
+        step.dataset.stage = stageId;
+        step.textContent = STAGE_LABELS[stageId];
+        container.appendChild(step);
+      });
+    };
+
+    // Initialize NFA pipeline
+    createSteps(this.elements.nfaLabelsContainer, PIPELINES.NFA);
+    this.elements.nfaSlider.max = PIPELINES.NFA.length - 1;
+    this.setTrackLayout(this.elements.nfaTrack, this.elements.nfaLabelsContainer, PIPELINES.NFA);
+
+    // Initialize DFA pipeline (start with full)
+    createSteps(this.elements.dfaLabelsContainer, PIPELINES.DFA);
+    this.elements.dfaSlider.max = PIPELINES.DFA.length - 1;
+    this.setTrackLayout(this.elements.dfaTrack, this.elements.dfaLabelsContainer, PIPELINES.DFA);
+
+    // Store references to steps for later use
+    this.elements.nfaLabels = this.elements.nfaLabelsContainer.querySelectorAll('.pipeline-step');
+    this.elements.dfaLabels = this.elements.dfaLabelsContainer.querySelectorAll('.pipeline-step');
+  }
+
+  /**
    * Initialize the application: set up event listeners and visualizer
    */
   init() {
     // Initialize CodeJar editors
     this.initEditors();
+
+    // Initialize Pipeline UI
+    this.initPipelineUI();
 
     // Populate examples
     Object.entries(EXAMPLES).forEach(([key, example]) => {
@@ -209,6 +291,11 @@ class App {
     this.elements.tabUnified.addEventListener('click', () => this.switchMode(MODES.UNIFIED));
     this.elements.tabRegex.addEventListener('click', () => this.switchMode(MODES.REGEX));
     this.elements.buildBtn.addEventListener('click', () => this.handleBuild());
+    this.elements.refreshLayoutBtn.addEventListener('click', () => {
+      if (this.visualizer) {
+        this.visualizer.runLayout(/* animate= */ true);
+      }
+    });
 
     // Auto-update test on input change
     this.elements.testInput.addEventListener('input', () => {
@@ -227,19 +314,35 @@ class App {
       this.updateStateListSelection(stateId);
     };
 
-    // Pipeline slider
-    this.elements.pipelineSlider.addEventListener('input', () => {
-      this.updatePipelineUI();
+    // NFA Pipeline slider
+    this.elements.nfaSlider.addEventListener('input', () => {
+      this.updatePipelineUI(this.elements.nfaSlider, this.elements.nfaLabels);
       this.updateTransformAndRender();
     });
 
-    // Pipeline labels click
-    this.elements.pipelineLabels.forEach(label => {
+    // NFA Pipeline labels click
+    this.elements.nfaLabels.forEach(label => {
       label.addEventListener('click', () => {
         const value = label.dataset.value;
-        this.elements.pipelineSlider.value = value;
-        this.updatePipelineUI();
+        this.elements.nfaSlider.value = value;
+        this.updatePipelineUI(this.elements.nfaSlider, this.elements.nfaLabels);
         this.updateTransformAndRender();
+      });
+    });
+
+    // DFA Pipeline slider
+    this.elements.dfaSlider.addEventListener('input', () => {
+      this.updatePipelineUI(this.elements.dfaSlider, this.elements.dfaLabels);
+      // TODO: Implement DFA transform logic
+    });
+
+    // DFA Pipeline labels click
+    this.elements.dfaLabels.forEach(label => {
+      label.addEventListener('click', () => {
+        const value = label.dataset.value;
+        this.elements.dfaSlider.value = value;
+        this.updatePipelineUI(this.elements.dfaSlider, this.elements.dfaLabels);
+        // TODO: Implement DFA transform logic
       });
     });
 
@@ -460,9 +563,12 @@ class App {
     // Hide empty state message
     this.elements.emptyState.classList.add('hidden');
 
-    // Reset pipeline slider
-    this.elements.pipelineSlider.value = 0;
-    this.updatePipelineUI();
+    // Reset pipeline sliders
+    this.elements.nfaSlider.value = 0;
+    this.updatePipelineUI(this.elements.nfaSlider, this.elements.nfaLabels);
+
+    this.elements.dfaSlider.value = 0;
+    this.updatePipelineUI(this.elements.dfaSlider, this.elements.dfaLabels);
 
     // Create view based on slider state
     this.updateViewFromSlider();
@@ -483,25 +589,72 @@ class App {
   /**
    * Update the pipeline UI to reflect current slider value
    */
-  updatePipelineUI() {
-    const value = parseInt(this.elements.pipelineSlider.value);
-    const max = parseInt(this.elements.pipelineSlider.max);
+  updatePipelineUI(slider, labels) {
+    const value = parseInt(slider.value);
+    const max = parseInt(slider.max);
     const percentage = (value / max) * 100;
 
     // Update slider fill
-    this.elements.pipelineSlider.style.setProperty('--slider-progress', `${percentage}%`);
+    slider.style.setProperty('--slider-progress', `${percentage}%`);
 
     // Update labels
-    this.elements.pipelineLabels.forEach(label => {
+    labels.forEach(label => {
       const labelValue = parseInt(label.dataset.value);
-      if (labelValue <= value) {
-        label.classList.add('active');
-      } else {
-        label.classList.remove('active');
-      }
+      label.classList.toggle('active', labelValue <= value);
     });
-  }
 
+    // If this is the NFA slider, update the DFA elements position
+    if (slider === this.elements.nfaSlider) {
+      // Use grid row positioning
+      // Value 0 -> Row 1
+      // Value 1 -> Row 2
+      // Value 2 -> Row 3
+      // Value 3 -> Row 4
+      const rowStart = value + 1;
+      [
+        this.elements.dfaArrow,
+        this.elements.dfaTrack,
+        this.elements.dfaLabelsContainer
+      ].forEach(el => el.style.gridRowStart = rowStart);
+
+      // Update DFA slider logic based on NFA state
+      // If the NFA pipeline has reached the PRUNE stage, remove PRUNE from the DFA pipeline
+      const pruneStageIndex = PIPELINES.NFA.indexOf(STAGES.PRUNE);
+      const nfaIsPruned = value >= pruneStageIndex;
+
+      const dfaPipeline = nfaIsPruned
+        ? PIPELINES.DFA.filter(s => s !== STAGES.PRUNE)
+        : PIPELINES.DFA;
+
+      // Update layout variables for DFA track
+      this.setTrackLayout(this.elements.dfaTrack, this.elements.dfaLabelsContainer, dfaPipeline);
+
+      // Update slider range
+      this.elements.dfaSlider.max = dfaPipeline.length - 1;
+
+      // Update labels
+      const dfaLabels = this.elements.dfaLabels;
+
+      // Update text and visibility based on the computed pipeline
+      dfaPipeline.forEach((stageId, index) => {
+        if (dfaLabels[index]) {
+          dfaLabels[index].textContent = STAGE_LABELS[stageId];
+          dfaLabels[index].style.display = '';
+        }
+      });
+
+      // Hide remaining labels
+      for (let i = dfaPipeline.length; i < dfaLabels.length; i++) {
+        dfaLabels[i].style.display = 'none';
+      }
+
+      // If switching to short mode, ensure value doesn't exceed max
+      if (parseInt(this.elements.dfaSlider.value) > this.elements.dfaSlider.max) {
+        this.elements.dfaSlider.value = this.elements.dfaSlider.max;
+        this.updatePipelineUI(this.elements.dfaSlider, this.elements.dfaLabels);
+      }
+    }
+  }
   /**
    * Precompute views for all pipeline steps
    */
@@ -552,7 +705,7 @@ class App {
    * Create a new NFAView based on the current NFA and slider state
    */
   updateViewFromSlider() {
-    const step = parseInt(this.elements.pipelineSlider.value);
+    const step = parseInt(this.elements.nfaSlider.value);
     this.view = this.pipelineViews[step];
   }
 
