@@ -426,17 +426,6 @@ export class NFA {
     return [...byTarget.entries()].map(([to, symbols]) => ({ to, symbols }));
   }
 
-  /** Get state information for visualization */
-  getStateInfo() {
-    const deadTransform = this.getDeadStates();
-    return this._transitions.map((_, id) => ({
-      id,
-      isStart: this.startStates.has(id),
-      isAccept: this.acceptStates.has(id),
-      isDead: deadTransform.isDeleted(id)
-    }));
-  }
-
   hasEnforcedEpsilonTransitions() {
     return this.epsilonTransitions.size === 0 || this.epsilonClosureInfo !== null;
   }

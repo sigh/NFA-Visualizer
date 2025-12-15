@@ -850,9 +850,7 @@ class App {
     }
 
     // Re-render
-    this.visualizer.render(this.view, positions, {
-      stateNamePrefix: this.getStateNamePrefix(),
-    });
+    this.visualizer.render(this.view, positions);
 
     // Restore viewport if we saved it
     if (viewport) {
@@ -938,7 +936,7 @@ class App {
     idSpan.className = 'state-id';
 
     const isMerged = sources.length > 1;
-    const prefix = this.getStateNamePrefix();
+    const prefix = this.view.getStateIdPrefix();
     const suffix = isMerged ? "'" : "";
 
     let stateName = `${prefix}${state.id}${suffix}`;
@@ -953,10 +951,11 @@ class App {
 
       const sourcesList = document.createElement('div');
       sourcesList.className = 'state-sources-list';
+      const prefix = this.view.getSourceStateIdPrefix();
       for (const { id, label } of resolvedSources) {
         const sourceDiv = document.createElement('div');
         sourceDiv.className = 'state-source-item';
-        sourceDiv.textContent = label ? `q${id}: ${label}` : `q${id}`;
+        sourceDiv.textContent = label ? `${prefix}${id}: ${label}` : `${prefix}${id}`;
         sourcesList.appendChild(sourceDiv);
       }
       header.appendChild(sourcesList);
@@ -1052,7 +1051,7 @@ class App {
       epsilonTargets = this.view.getEpsilonTransitionsFrom(stateId);
     }
 
-    const prefix = this.getStateNamePrefix();
+    const prefix = this.view.getStateIdPrefix();
     if (byCanonicalTarget.size === 0 && epsilonTargets.size === 0) {
       const row = document.createElement('div');
       row.className = 'transition-row';
@@ -1269,10 +1268,6 @@ class App {
   showTestResult(message, accepted) {
     this.elements.testResult.textContent = message;
     this.elements.testResult.className = `test-result ${accepted ? 'accepted' : 'rejected'}`;
-  }
-
-  getStateNamePrefix() {
-    return this.activePipeline === PIPELINE_MODES.DFA ? "q'" : 'q';
   }
 
   // ============================================

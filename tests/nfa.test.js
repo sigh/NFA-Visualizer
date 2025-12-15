@@ -571,41 +571,6 @@ describe('NFA', () => {
     });
   });
 
-  describe('getStateInfo()', () => {
-    test('returns array of all state information', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addAccept(s1);
-      nfa.addStart(s0);
-
-      const info = nfa.getStateInfo();
-      assert(Array.isArray(info));
-      assert.strictEqual(info.length, 2);
-      assert.strictEqual(info[0].id, 0);
-      assert(info[0].isStart);
-      assert(!info[0].isAccept);
-      assert.strictEqual(info[1].id, 1);
-      assert(info[1].isAccept);
-    });
-
-    test('identifies dead states', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addAccept(s1);
-      const s2 = nfa.addState(); // dead state - no path to accept
-      nfa.addStart(s0);
-      nfa.addTransition(s0, s1, 0);
-      nfa.addTransition(s0, s2, 0);
-
-      const info = nfa.getStateInfo();
-      assert(!info[0].isDead); // can reach s1
-      assert(!info[1].isDead); // is accepting
-      assert(info[2].isDead); // no path to accept
-    });
-  });
-
   describe('enforceEpsilonTransitions()', () => {
     test('propagates transitions through epsilon', () => {
       const nfa = new NFA(['a']);

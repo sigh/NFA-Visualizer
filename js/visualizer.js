@@ -365,11 +365,9 @@ export class NFAVisualizer {
    * @param {import('./nfa_view.js').NFAView} view - The NFA view to render
    * @param {Map<number, {x: number, y: number}>} [positions] - Optional preset positions
    * @param {Object} [options] - Render options
-   * @param {string} [options.stateNamePrefix] - What prefix to use for state names
    */
   render(view, positions = null, options = {}) {
     this.view = view;
-    this.renderOptions = options;
     const elements = this.buildElements();
 
     // Destroy existing instance
@@ -648,7 +646,7 @@ export class NFAVisualizer {
    * @returns {string}
    */
   getStateLabel(stateId, sources) {
-    const prefix = this.renderOptions?.stateNamePrefix || 'q';
+    const prefix = this.view.getStateIdPrefix();
 
     // If this node absorbed other states, show with prime notation
     if (sources.length > 1) {
@@ -666,9 +664,10 @@ export class NFAVisualizer {
   getFullStateLabel(stateId) {
     // List each source on its own line
     const resolvedSources = this.view.getResolvedSources(stateId);
+    const prefix = this.view.getSourceStateIdPrefix();
     // Note, all these states are resolved, so use the base prefixes.
     const sourceLines = resolvedSources.map(({ id, label }) => {
-      return label ? `q${id}: ${label}` : `q${id}`;
+      return label ? `${prefix}${id}: ${label}` : `${prefix}${id}`;
     });
     return sourceLines.join('\n');
   }

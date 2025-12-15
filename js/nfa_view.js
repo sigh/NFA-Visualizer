@@ -33,6 +33,16 @@ export class NFAView {
 
     // Compute merged sources once
     this.mergedSources = this._computeMergedSources();
+
+    this._deadStates = this.nfa.getDeadStates();
+  }
+
+  getStateIdPrefix() {
+    return this.nfa.parentNfa ? "q'" : 'q';
+  }
+
+  getSourceStateIdPrefix() {
+    return 'q';
   }
 
   /**
@@ -64,7 +74,7 @@ export class NFAView {
     let accept = 0;
     let dead = 0;
 
-    const deadTransform = this.nfa.getDeadStates();
+    const deadTransform = this._deadStates;
 
     for (let i = 0; i < this.transform.remap.length; i++) {
       // Only count canonical states (where remap[i] === i)

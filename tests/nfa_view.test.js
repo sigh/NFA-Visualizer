@@ -373,6 +373,9 @@ describe('NFAView', () => {
       nfa.addState(); // q1
       nfa.addStart(0);
       nfa.addEpsilonTransition(0, 1);
+
+      nfa.enforceEpsilonTransitions();
+
       const transform = StateTransformation.identity(2);
       const view = new NFAView(nfa, transform, { showEpsilonTransitions: true });
 
