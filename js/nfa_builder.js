@@ -9,7 +9,7 @@
  * @module nfa_builder
  */
 
-import { canonicalJSON } from './util.js';
+import { canonicalJSON, extractFunctionBody } from './util.js';
 import { NFA, DEFAULT_SYMBOL_CLASS } from './nfa.js';
 
 // ============================================
@@ -373,7 +373,9 @@ export function parseNFAConfig(code) {
   } catch (e) {
     throw new Error(`Code error: ${e.message}`);
   }
-}/**
+}
+
+/**
  * Build unified code string from split input components
  *
  * @param {string} symbolsCode - The symbols expression
@@ -475,27 +477,4 @@ export function parseSplitFromCode(code) {
       epsilonBody: ''
     };
   }
-}
-
-/**
- * Extract function body text from a function object.
- * Removes the 2-space base indent that buildCodeFromSplit adds.
- */
-function extractFunctionBody(fn) {
-  const source = fn.toString();
-  // Find the opening brace and closing brace
-  const start = source.indexOf('{') + 1;
-  const end = source.lastIndexOf('}');
-  if (start === 0 || end === -1) return '';
-
-  // Extract body and remove leading/trailing whitespace
-  let body = source.slice(start, end);
-
-  // Remove leading newline if present
-  if (body.startsWith('\n')) body = body.slice(1);
-  // Remove trailing newline if present
-  if (body.endsWith('\n')) body = body.slice(0, -1);
-
-  // Remove 2-space base indent from each line
-  return body.replace(/^ {2}/gm, '');
 }

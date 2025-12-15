@@ -173,6 +173,15 @@ export class NFA {
     return this._symbolToIndex.has(symbol);
   }
 
+  /**
+   * Get the symbol index for a symbol in this NFA's alphabet.
+   * @param {string} symbol
+   * @returns {number|undefined}
+   */
+  getSymbolIndex(symbol) {
+    return this._symbolToIndex.get(symbol);
+  }
+
   /** Add a new state, returns its ID */
   addState(label) {
     this._deadStatesCache = null;
@@ -360,7 +369,7 @@ export class NFA {
 
       // Follow transitions for all symbols in this step
       for (const symbol of symbols) {
-        const symbolIndex = this._symbolToIndex.get(symbol);
+        const symbolIndex = this.getSymbolIndex(symbol);
         if (symbolIndex === undefined) continue;
 
         for (const stateId of currentStates) {

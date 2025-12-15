@@ -179,7 +179,7 @@ export class NFAView {
         const addedFrom = this.nfa.epsilonClosureInfo?.addedTransitions.get(stateId);
         if (addedFrom) {
           visibleSymbols = symbols.filter(symbol => {
-            const symbolIndex = this.nfa._symbolToIndex.get(symbol);
+            const symbolIndex = this.nfa.getSymbolIndex(symbol);
             const addedTo = addedFrom.get(symbolIndex);
             return !addedTo || !addedTo.has(to);
           });

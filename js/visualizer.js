@@ -666,6 +666,7 @@ export class NFAVisualizer {
   getFullStateLabel(stateId) {
     // List each source on its own line
     const resolvedSources = this.view.getResolvedSources(stateId);
+    // Note, all these states are resolved, so use the base prefixes.
     const sourceLines = resolvedSources.map(({ id, label }) => {
       return label ? `q${id}: ${label}` : `q${id}`;
     });
@@ -769,7 +770,9 @@ export class NFAVisualizer {
         this.cy.$(`#eps${edgeKey}`).addClass('highlighted');
       }
     });
-  }  /**
+  }
+
+  /**
    * Clear all trace highlighting
    */
   clearHighlight() {

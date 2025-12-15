@@ -25,7 +25,10 @@ export class DFABuilder {
     // 2. Initialize Worklist
     // Map of StateKey -> DFA State ID
     const dfaStateMap = new Map();
+    // Use array + head index for O(1) dequeues
+    // We use a queue so that state IDs are assigned in BFS order
     const worklist = [];
+    let worklistHead = 0;
 
     const startKey = DFABuilder._getStateKey(startStates);
     const startId = dfa.addState(startKey);
@@ -39,8 +42,8 @@ export class DFABuilder {
     worklist.push(startStates);
 
     // 3. Process Worklist
-    while (worklist.length > 0) {
-      const currentSet = worklist.shift();
+    while (worklistHead < worklist.length) {
+      const currentSet = worklist[worklistHead++];
       const currentId = dfaStateMap.get(DFABuilder._getStateKey(currentSet));
 
       // Group transitions by symbol for the current set of states

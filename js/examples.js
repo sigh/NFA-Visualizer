@@ -2,6 +2,8 @@
  * Example NFA configurations for the visualizer.
  */
 
+import { extractFunctionBody } from './util.js';
+
 const RAW_EXAMPLES = {
   'divisible-by-3': {
     label: 'Divisible by 3',
@@ -95,35 +97,12 @@ const RAW_EXAMPLES = {
   },
 };
 
-function extractBody(fn) {
-  const str = fn.toString();
-  const body = str.substring(str.indexOf('{') + 1, str.lastIndexOf('}'));
-  const lines = body.split(/\r?\n/);
-
-  // Find first non-empty line
-  const start = lines.findIndex(line => line.trim().length > 0);
-  if (start === -1) return '';
-
-  // Find last non-empty line
-  let end = lines.length - 1;
-  while (end >= start && lines[end].trim().length === 0) end--;
-
-  const content = lines.slice(start, end + 1);
-
-  // Determine indentation from the first line
-  const indent = content[0].match(/^\s*/)[0].length;
-
-  return content
-    .map(line => line.slice(Math.min(line.length, indent)))
-    .join('\n');
-}
-
 export const EXAMPLES = Object.fromEntries(
   Object.entries(RAW_EXAMPLES).map(([key, ex]) => [
     key,
     {
       label: ex.label,
-      code: extractBody(ex.fn)
+      code: extractFunctionBody(ex.fn)
     }
   ])
 );

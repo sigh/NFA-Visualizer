@@ -152,9 +152,9 @@ describe('NFA', () => {
 
     test('creates symbol-to-index mapping', () => {
       const nfa = new NFA(['a', 'b', 'c']);
-      assert.strictEqual(nfa._symbolToIndex.get('a'), 0);
-      assert.strictEqual(nfa._symbolToIndex.get('b'), 1);
-      assert.strictEqual(nfa._symbolToIndex.get('c'), 2);
+      assert.strictEqual(nfa.getSymbolIndex('a'), 0);
+      assert.strictEqual(nfa.getSymbolIndex('b'), 1);
+      assert.strictEqual(nfa.getSymbolIndex('c'), 2);
     });
 
     test('initializes empty state collections', () => {

@@ -517,7 +517,9 @@ class App {
     this.saveToStorage();
     this.handleBuild();
     this.elements.examplesSelect.value = '';
-  }  // ============================================
+  }
+
+  // ============================================
   // Build Handler
   // ============================================
 
