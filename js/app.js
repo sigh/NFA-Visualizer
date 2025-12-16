@@ -711,6 +711,9 @@ class App {
     const views = [];
     const numStates = nfa.numStates();
 
+    // One opaque layout state shared by all views in this pipeline.
+    const layoutState = this.visualizer?.createLayoutState?.() || null;
+
     // The pipeline can swap to a derived NFA at certain stages (e.g. ε-Closure).
     let stageNfa = nfa;
 
@@ -723,7 +726,7 @@ class App {
       switch (stage) {
         case STAGES.RAW:
           // Identity transform for the raw NFA (explicit epsilon edges come from the NFA itself)
-          view = new NFAView(stageNfa, StateTransformation.identity(numStates));
+          view = new NFAView(stageNfa, StateTransformation.identity(numStates), layoutState);
           break;
 
         case STAGES.EPSILON:
@@ -731,12 +734,12 @@ class App {
           stageNfa = stageNfa.clone();
           stageNfa.enforceEpsilonTransitions();
 
-          view = new NFAView(stageNfa, StateTransformation.identity(numStates));
+          view = new NFAView(stageNfa, StateTransformation.identity(numStates), layoutState);
           break;
 
         case STAGES.EXPAND:
           // Same as EPSILON but conceptually different for DFA (start of pipeline)
-          view = new NFAView(stageNfa, StateTransformation.identity(numStates));
+          view = new NFAView(stageNfa, StateTransformation.identity(numStates), layoutState);
           break;
 
         case STAGES.PRUNE:
@@ -744,7 +747,7 @@ class App {
           const deadTransform = stageNfa.getDeadStates();
           currentTransform = currentTransform.compose(deadTransform);
 
-          view = new NFAView(stageNfa, currentTransform);
+          view = new NFAView(stageNfa, currentTransform, layoutState);
           break;
 
         case STAGES.MERGE:
@@ -755,12 +758,12 @@ class App {
           // However, for consistency with how we track currentTransform:
           currentTransform = mergeTransform;
 
-          view = new NFAView(stageNfa, currentTransform);
+          view = new NFAView(stageNfa, currentTransform, layoutState);
           break;
 
         default:
           console.warn(`Unknown pipeline stage: ${stage}`);
-          view = new NFAView(stageNfa, currentTransform);
+          view = new NFAView(stageNfa, currentTransform, layoutState);
       }
 
       views.push(view);
@@ -815,7 +818,7 @@ class App {
    * Recompute transform and re-render, preserving viewport and positions
    */
   updateTransformAndRender() {
-    const previousNFA = this.view ? this.view.nfa : null;
+    const previousView = this.view;
 
     const views = this.getActivePipelineViews();
 
@@ -823,25 +826,14 @@ class App {
       ? this.elements.dfaSlider
       : this.elements.nfaSlider;
     this.view = views[parseInt(slider.value)];
-    const newNFA = this.view.nfa;
 
-    // Save current viewport and positions ONLY if the underlying NFA hasn't changed
-    // If we switched from NFA to DFA (or vice versa), or rebuilt the DFA, we want a fresh layout.
-    let viewport = null;
-    let positions = null;
-
-    if (previousNFA === newNFA) {
-      viewport = this.visualizer.getViewport();
-      positions = this.visualizer.getNodePositions();
+    // Capture the previous layout into its (opaque) layout state.
+    if (previousView?.layoutState) {
+      this.visualizer.captureLayout(previousView.layoutState);
     }
 
     // Re-render
-    this.visualizer.render(this.view, positions);
-
-    // Restore viewport if we saved it
-    if (viewport) {
-      this.visualizer.setViewport(viewport);
-    }
+    this.visualizer.render(this.view, this.view.layoutState);
 
     // Update stats display
     this.updateStatsDisplay(this.view, views[views.length - 1]);

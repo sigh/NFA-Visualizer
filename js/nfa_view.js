@@ -17,10 +17,14 @@ export class NFAView {
   /**
    * @param {NFA} nfa - The NFA
    * @param {StateTransformation} transform - The transformation to apply
+   * @param {any} [layoutState] - Opaque layout state owned by the visualizer
    */
-  constructor(nfa, transform) {
+  constructor(nfa, transform, layoutState = null) {
     this.nfa = nfa;
     this.transform = transform;
+
+    // Opaque layout state (visualizer-owned). This view must not inspect it.
+    this.layoutState = layoutState;
 
     // Compute merged sources once
     this.mergedSources = this._computeMergedSources();

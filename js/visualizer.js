@@ -317,58 +317,48 @@ export class NFAVisualizer {
   }
 
   /**
-   * Get current node positions
-   * @returns {Map<number, {x: number, y: number}>} Map of state ID to position
+   * Create a new opaque layout state object.
+   * Callers must treat the returned object as opaque.
    */
-  getNodePositions() {
-    const positions = new Map();
-    if (!this.cy) return positions;
-
-    this.cy.nodes().forEach(node => {
-      const id = node.id();
-      if (id.startsWith('s')) {
-        const stateId = parseInt(id.slice(1), 10);
-        const pos = node.position();
-        positions.set(stateId, { x: pos.x, y: pos.y });
-      }
-    });
-
-    return positions;
+  createLayoutState() {
+    return {
+      positions: new Map(),
+      viewport: null
+    };
   }
 
   /**
-   * Get current viewport (zoom and pan)
-   * @returns {{zoom: number, pan: {x: number, y: number}}}
+   * Capture current graph layout into the provided layout state.
+   * @param {any} layoutState
    */
-  getViewport() {
-    if (!this.cy) return { zoom: 1, pan: { x: 0, y: 0 } };
-    return {
+  captureLayout(layoutState) {
+    if (!layoutState || !this.cy) return;
+
+    // Positions keyed by Cytoscape node id (string), no parsing.
+    const positions = new Map();
+    this.cy.nodes().forEach(node => {
+      const pos = node.position();
+      positions.set(node.id(), { x: pos.x, y: pos.y });
+    });
+
+    layoutState.positions = positions;
+    layoutState.viewport = {
       zoom: this.cy.zoom(),
       pan: this.cy.pan()
     };
   }
 
   /**
-   * Set viewport (zoom and pan)
-   * @param {{zoom: number, pan: {x: number, y: number}}} viewport
-   */
-  setViewport(viewport) {
-    if (!this.cy || !viewport) return;
-    this.cy.viewport({
-      zoom: viewport.zoom,
-      pan: viewport.pan
-    });
-  }
-
-  /**
    * Render the NFA visualization
-   * @param {import('./nfa_view.js').NFAView} view - The NFA view to render
-   * @param {Map<number, {x: number, y: number}>} [positions] - Optional preset positions
-   * @param {Object} [options] - Render options
+   * @param {NFAView} view - The NFA view to render
+   * @param {any} [layoutState] - Optional opaque layout state (visualizer-owned)
    */
-  render(view, positions = null, options = {}) {
+  render(view, layoutState = null) {
     this.view = view;
     const elements = this.buildElements();
+
+    // Prefer explicit layoutState param, then view.layoutState.
+    const state = layoutState || view.layoutState || null;
 
     // Destroy existing instance
     if (this.cy) {
@@ -379,8 +369,9 @@ export class NFAVisualizer {
     this.ensureTooltip();
 
     // Determine layout: use preset positions if provided, otherwise dagre
-    const layoutOptions = positions && positions.size > 0
-      ? this.getPresetLayoutOptions(positions)
+    const hasPreset = !!(state && state.positions && state.positions.size > 0);
+    const layoutOptions = hasPreset
+      ? this.getPresetLayoutOptions(state.positions)
       : this.getLayoutOptions();
 
     // Create new Cytoscape instance
@@ -396,9 +387,19 @@ export class NFAVisualizer {
     // Setup tooltip events
     this.setupTooltipEvents();
 
-    // Fit to container with padding (only if no preset positions)
-    if (!positions || positions.size === 0) {
+    // Restore viewport if present; otherwise fit if we didn't use preset positions.
+    if (state && state.viewport) {
+      this.cy.viewport({
+        zoom: state.viewport.zoom,
+        pan: state.viewport.pan
+      });
+    } else if (!hasPreset) {
       this.cy.fit(50);
+    }
+
+    // Store layout state back onto the view (opaque).
+    if (state) {
+      view.layoutState = state;
     }
   }
 
@@ -619,7 +620,7 @@ export class NFAVisualizer {
 
   /**
    * Get layout options for preset positions
-   * @param {Map<number, {x: number, y: number}>} positions
+   * @param {Map<string, {x: number, y: number}>} positions
    * @returns {Object} Layout options
    */
   getPresetLayoutOptions(positions) {
@@ -627,12 +628,7 @@ export class NFAVisualizer {
       name: 'preset',
       positions: (node) => {
         const id = node.id();
-        if (id.startsWith('s')) {
-          const stateId = parseInt(id.slice(1), 10);
-          if (positions.has(stateId)) {
-            return positions.get(stateId);
-          }
-        }
+        if (positions.has(id)) return positions.get(id);
         return { x: 0, y: 0 };
       },
       padding: 30
