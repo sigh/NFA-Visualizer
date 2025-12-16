@@ -7,7 +7,6 @@
  */
 
 import { CodeJar } from '../lib/codejar.min.js';
-import { StateTransformation } from './nfa.js';
 import { NFABuilder, parseNFAConfig, buildCodeFromSplit, parseSplitFromCode, expandSymbolClass } from './nfa_builder.js';
 import { DFABuilder } from './dfa_builder.js';
 import { RegexParser, RegexToNFABuilder } from './regex_parser.js';
@@ -709,61 +708,37 @@ class App {
    */
   buildPipeline(nfa, stages) {
     const views = [];
-    const numStates = nfa.numStates();
 
     // One opaque layout state shared by all views in this pipeline.
     const layoutState = this.visualizer?.createLayoutState?.() || null;
 
-    // The pipeline can swap to a derived NFA at certain stages (e.g. ε-Closure).
-    let stageNfa = nfa;
-
-    // Keep track of the current transform as we progress through stages
-    let currentTransform = StateTransformation.identity(numStates);
+    // Start from a base view (identity transform).
+    let view = NFAView.fromNFA(nfa, layoutState);
 
     for (const stage of stages) {
-      let view;
-
       switch (stage) {
         case STAGES.RAW:
-          // Identity transform for the raw NFA (explicit epsilon edges come from the NFA itself)
-          view = new NFAView(stageNfa, StateTransformation.identity(numStates), layoutState);
+          // Base view for the raw NFA (explicit epsilon edges come from the NFA itself)
           break;
 
         case STAGES.EPSILON:
-          // Create a new NFA with epsilon-closure enforced (no explicit epsilon edges)
-          stageNfa = stageNfa.clone();
-          stageNfa.enforceEpsilonTransitions();
-
-          view = new NFAView(stageNfa, StateTransformation.identity(numStates), layoutState);
+          view = view.withEpsilonClosure();
           break;
 
         case STAGES.EXPAND:
-          // Same as EPSILON but conceptually different for DFA (start of pipeline)
-          view = new NFAView(stageNfa, StateTransformation.identity(numStates), layoutState);
+          // Base view for DFA pipeline (DFA is already built externally)
           break;
 
         case STAGES.PRUNE:
-          // Hide dead states
-          const deadTransform = stageNfa.getDeadStates();
-          currentTransform = currentTransform.compose(deadTransform);
-
-          view = new NFAView(stageNfa, currentTransform, layoutState);
+          view = view.withDeadStatesPruned();
           break;
 
         case STAGES.MERGE:
-          // Merge equivalent states
-          const mergeTransform = stageNfa.getEquivalentStateRemap(currentTransform);
-          // Note: getEquivalentStateRemap builds upon the input transform,
-          // so we don't need to compose it manually if we pass currentTransform
-          // However, for consistency with how we track currentTransform:
-          currentTransform = mergeTransform;
-
-          view = new NFAView(stageNfa, currentTransform, layoutState);
+          view = view.withEquivalentStatesMerged();
           break;
 
         default:
           console.warn(`Unknown pipeline stage: ${stage}`);
-          view = new NFAView(stageNfa, currentTransform, layoutState);
       }
 
       views.push(view);

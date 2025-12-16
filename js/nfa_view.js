@@ -4,16 +4,28 @@
  * Combines an NFA with a StateTransformation and provides derived data
  * that depends on both (merged sources, stats, mapped transitions).
  *
- * The app is responsible for computing the transform and creating new
- * NFAView instances when the transform changes.
+ * Stage transformations can be derived from an existing view using
+ * `with*` methods (e.g. `withEpsilonClosure`, `withDeadStatesPruned`).
  *
  * @module nfa_view
  */
+
+import { StateTransformation } from './nfa.js';
 
 /**
  * A view of an NFA with a transformation applied
  */
 export class NFAView {
+  /**
+   * Create a base view with an identity transform.
+   * @param {NFA} nfa
+   * @param {any} [layoutState] - Opaque layout state owned by the visualizer
+   * @returns {NFAView}
+   */
+  static fromNFA(nfa, layoutState = null) {
+    return new NFAView(nfa, StateTransformation.identity(nfa.numStates()), layoutState);
+  }
+
   /**
    * @param {NFA} nfa - The NFA
    * @param {StateTransformation} transform - The transformation to apply
@@ -30,6 +42,56 @@ export class NFAView {
     this.mergedSources = this._computeMergedSources();
 
     this._deadStates = this.nfa.getDeadStates();
+  }
+
+  /**
+   * @private
+   * @param {import('./nfa.js').StateTransformation} other
+   */
+  _hasSameTransform(other) {
+    if (other === this.transform) return true;
+    const a = this.transform.remap;
+    const b = other.remap;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Derive a view where epsilon transitions have been enforced on a cloned NFA.
+   * The resulting view has an identity transform.
+   * @returns {NFAView}
+   */
+  withEpsilonClosure() {
+    if (this.nfa.epsilonTransitions.size === 0) return this;
+    const cloned = this.nfa.clone();
+    cloned.enforceEpsilonTransitions();
+    return NFAView.fromNFA(cloned, this.layoutState);
+  }
+
+  /**
+   * Derive a view with dead states pruned (hidden) by composing a deletion transform.
+   * @returns {NFAView}
+   */
+  withDeadStatesPruned() {
+    const deadTransform = this.nfa.getDeadStates();
+    if (deadTransform.isIdentity()) return this;
+
+    const nextTransform = this.transform.compose(deadTransform);
+    if (this._hasSameTransform(nextTransform)) return this;
+    return new NFAView(this.nfa, nextTransform, this.layoutState);
+  }
+
+  /**
+   * Derive a view with equivalent states merged.
+   * @returns {NFAView}
+   */
+  withEquivalentStatesMerged() {
+    const mergedTransform = this.nfa.getEquivalentStateRemap(this.transform);
+    if (this._hasSameTransform(mergedTransform)) return this;
+    return new NFAView(this.nfa, mergedTransform, this.layoutState);
   }
 
   getStateIdPrefix() {
