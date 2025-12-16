@@ -13,7 +13,7 @@ export class DFABuilder {
    */
   static build(view) {
     // Ensure we are working with a view that exposes effective transitions
-    if (view.showEpsilonTransitions) {
+    if (view.nfa.epsilonTransitions.size > 0) {
       throw new Error('DFABuilder: Cannot build from a view with explicit epsilon transitions.');
     }
 

@@ -560,7 +560,7 @@ export class NFAVisualizer {
       }
 
       // Epsilon transitions
-      if (view.showEpsilonTransitions) {
+      if (view.nfa.epsilonTransitions.size > 0) {
         const epsilonTargets = view.getEpsilonTransitionsFrom(state.id);
         for (const to of epsilonTargets) {
           const isLoop = state.id === to;

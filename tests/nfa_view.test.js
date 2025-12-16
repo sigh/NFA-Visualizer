@@ -373,11 +373,8 @@ describe('NFAView', () => {
       nfa.addState(); // q1
       nfa.addStart(0);
       nfa.addEpsilonTransition(0, 1);
-
-      nfa.enforceEpsilonTransitions();
-
       const transform = StateTransformation.identity(2);
-      const view = new NFAView(nfa, transform, { showEpsilonTransitions: true });
+      const view = new NFAView(nfa, transform);
 
       assert.strictEqual(view.isDeterministic(), false);
     });
@@ -395,11 +392,8 @@ describe('NFAView', () => {
       nfa.addEpsilonTransition(s0, s1);
       nfa.addTransition(s1, s2, 0);
 
-      // Calculate epsilon closure info
-      nfa.enforceEpsilonTransitions();
-
       const transform = StateTransformation.identity(3);
-      const view = new NFAView(nfa, transform, { showEpsilonTransitions: true });
+      const view = new NFAView(nfa, transform);
 
       const info = view.getStateInfo();
       const startInfo = info.find(s => s.id === s0);

@@ -397,6 +397,8 @@ describe('NFABuilder', () => {
     const builder = new NFABuilder(config, { symbols: ['a'] });
     const nfa = builder.build();
 
+    nfa.enforceEpsilonTransitions();
+
     assert.strictEqual(nfa.startStates.size, 1);
   });
 
@@ -627,6 +629,8 @@ describe('epsilon transitions', () => {
     const builder = new NFABuilder(config, { symbols: ['a'] });
     const nfa = builder.build();
 
+    nfa.enforceEpsilonTransitions();
+
     // Both 0 and 1 should be start states due to epsilon closure
     assert.strictEqual(nfa.startStates.size, 2);
     assert(nfa.startStates.has(0));
@@ -671,8 +675,12 @@ describe('epsilon transitions', () => {
     const builder = new NFABuilder(config, { symbols: ['a'] });
     const nfa = builder.build();
 
-    // All 4 states should be start states
-    assert.strictEqual(nfa.startStates.size, 4);
+    const closure = nfa.getEpsilonClosure(0);
+    assert.strictEqual(closure.size, 4);
+    assert(closure.has(0));
+    assert(closure.has(1));
+    assert(closure.has(2));
+    assert(closure.has(3));
 
     // Empty string should be accepted
     const result = nfa.run([]);
@@ -691,6 +699,8 @@ describe('epsilon transitions', () => {
     const builder = new NFABuilder(config, { symbols: ['a'] });
     const nfa = builder.build();
 
+    nfa.enforceEpsilonTransitions();
+
     // State 0 should be marked as accepting (can reach accept via epsilon)
     assert(nfa.acceptStates.has(0));
     assert(nfa.acceptStates.has(1));
@@ -707,6 +717,8 @@ describe('epsilon transitions', () => {
 
     const builder = new NFABuilder(config, { symbols: ['a'] });
     const nfa = builder.build();
+
+    nfa.enforceEpsilonTransitions();
 
     assert.strictEqual(nfa.startStates.size, 3);
     assert(nfa.acceptStates.has(0)); // Can reach 2 via epsilon

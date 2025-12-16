@@ -154,19 +154,13 @@ export class NFABuilder {
         const closureId = addState(closureState);
 
         // Record explicit epsilon transition
-        if (!nfa.epsilonTransitions.has(currentId)) {
-          nfa.epsilonTransitions.set(currentId, new Set());
-        }
-        nfa.epsilonTransitions.get(currentId).add(closureId);
+        nfa.addEpsilonTransition(currentId, closureId);
 
         if (!visited.has(closureId)) {
           queue.push(closureId);
         }
       }
     }
-
-    // Apply epsilon closure transformations to NFA structure
-    nfa.enforceEpsilonTransitions();
 
     return nfa;
   }

@@ -160,8 +160,77 @@ export class NFA {
 
     /** @type {StateTransformation|null} Cached dead states transformation */
     this._deadStatesCache = null;
-    /** @type {Object|null} Epsilon closure info (if computed) */
-    this.epsilonClosureInfo = null;
+
+    /** @type {Map<number, Set<number>>|null} Cached epsilon closure for all states (internal) */
+    this._epsilonClosure = null;
+  }
+
+  /**
+   * Create a deep copy of this NFA.
+   * Copies transitions, start/accept sets, labels, and epsilon transitions.
+   * Cached analyses (dead states / epsilon closure) are not copied.
+   * @returns {NFA}
+   */
+  clone() {
+    const cloned = new NFA([...this.symbols]);
+
+    cloned._transitions = structuredClone(this._transitions);
+
+    cloned.startStates = new Set(this.startStates);
+    cloned.acceptStates = new Set(this.acceptStates);
+    cloned.stateLabels = [...this.stateLabels];
+
+    cloned.epsilonTransitions = new Map();
+    for (const [fromId, targets] of this.epsilonTransitions.entries()) {
+      cloned.epsilonTransitions.set(fromId, new Set(targets));
+    }
+
+    cloned.parentNfa = this.parentNfa;
+    return cloned;
+  }
+
+  _computeAllEpsilonClosures() {
+    const numStates = this.numStates();
+    const closures = new Map();
+
+    for (let stateId = 0; stateId < numStates; stateId++) {
+      const closure = new Set([stateId]);
+      const stack = [stateId];
+      while (stack.length > 0) {
+        const current = stack.pop();
+        const targets = this.epsilonTransitions.get(current);
+        if (!targets) continue;
+        for (const target of targets) {
+          if (!closure.has(target)) {
+            closure.add(target);
+            stack.push(target);
+          }
+        }
+      }
+      closures.set(stateId, closure);
+    }
+
+    this._epsilonClosure = closures;
+  }
+
+  /**
+   * Get the epsilon-closure of a state (including itself).
+   * Computes and caches closures on demand.
+   *
+   * @param {number} stateId
+   * @returns {Set<number>}
+   */
+  getEpsilonClosure(stateId) {
+    if (this.epsilonTransitions.size === 0) {
+      return new Set([stateId]);
+    }
+
+    // Compute the full closure map once (never partial).
+    if (this._epsilonClosure === null) {
+      this._computeAllEpsilonClosures();
+    }
+
+    return this._epsilonClosure.get(stateId);
   }
 
   /**
@@ -236,6 +305,9 @@ export class NFA {
    * @returns {boolean} True if the transition was newly added
    */
   addEpsilonTransition(fromState, toState) {
+    if (this._epsilonClosure !== null) {
+      throw new Error('Cannot add epsilon transition after epsilon closure has been computed');
+    }
     if (!this.epsilonTransitions.has(fromState)) {
       this.epsilonTransitions.set(fromState, new Set());
     }
@@ -267,50 +339,19 @@ export class NFA {
 
   /**
    * Enforce epsilon transitions by computing closures and adding necessary transitions/states.
-   * Populates epsilonClosureInfo.
    */
   enforceEpsilonTransitions() {
     if (this.epsilonTransitions.size === 0) return; // No epsilon transitions
 
-    const epsilonClosureInfo = {
-      addedStartStates: new Set(),
-      addedAcceptStates: new Set(),
-      addedTransitions: new Map(), // fromId -> symbolIndex -> Set<toId>
-      epsilonClosure: new Map(), // stateId -> Set<stateId>
-    };
-    this.epsilonClosureInfo = epsilonClosureInfo;
-
-    const epsilonClosure = epsilonClosureInfo.epsilonClosure;
-
-    // Helper to get epsilon closure of a state ID
-    const getEpsilonClosure = (stateId) => {
-      if (epsilonClosure.has(stateId)) {
-        return epsilonClosure.get(stateId);
-      }
-      const closure = new Set([stateId]);
-      const stack = [stateId];
-      while (stack.length > 0) {
-        const current = stack.pop();
-        const targets = this.epsilonTransitions.get(current);
-        if (targets) {
-          for (const target of targets) {
-            if (!closure.has(target)) {
-              closure.add(target);
-              stack.push(target);
-            }
-          }
-        }
-      }
-      epsilonClosure.set(stateId, closure);
-      return closure;
-    };
+    // Ensure we have the full closure map (also freezes epsilon graph).
+    if (this._epsilonClosure === null) {
+      this._computeAllEpsilonClosures();
+    }
 
     // Expand start states
     for (const startId of [...this.startStates]) {
-      for (const closureState of getEpsilonClosure(startId)) {
-        if (this.addStart(closureState)) {
-          epsilonClosureInfo.addedStartStates.add(closureState);
-        }
+      for (const closureState of this.getEpsilonClosure(startId)) {
+        this.addStart(closureState);
       }
     }
 
@@ -321,20 +362,8 @@ export class NFA {
         // Snapshot transitions to avoid iterating over newly added ones
         const targets = [...this.getTransitions(fromId, symbolIndex)];
         for (const toId of targets) {
-          for (const closureState of getEpsilonClosure(toId)) {
-            if (this.addTransition(fromId, closureState, symbolIndex)) {
-              let fromMap = epsilonClosureInfo.addedTransitions.get(fromId);
-              if (!fromMap) {
-                fromMap = new Map();
-                epsilonClosureInfo.addedTransitions.set(fromId, fromMap);
-              }
-              let toSet = fromMap.get(symbolIndex);
-              if (!toSet) {
-                toSet = new Set();
-                fromMap.set(symbolIndex, toSet);
-              }
-              toSet.add(closureState);
-            }
+          for (const closureState of this.getEpsilonClosure(toId)) {
+            this.addTransition(fromId, closureState, symbolIndex);
           }
         }
       }
@@ -342,15 +371,18 @@ export class NFA {
 
     // Propagate accept status
     for (let id = 0; id < numStates; id++) {
-      for (const closureState of getEpsilonClosure(id)) {
+      for (const closureState of this.getEpsilonClosure(id)) {
         if (this.acceptStates.has(closureState)) {
-          if (this.addAccept(id)) {
-            epsilonClosureInfo.addedAcceptStates.add(id);
-          }
+          this.addAccept(id);
           break;
         }
       }
     }
+
+    // After enforcement, explicit epsilon edges are no longer needed.
+    // Keep _epsilonClosure non-null so future epsilon mutations still throw.
+    this.epsilonTransitions = new Map();
+    this._deadStatesCache = null;
   }
 
   /**
@@ -360,7 +392,22 @@ export class NFA {
    * @param {Array<string[]>} inputSequence - Array of symbol arrays
    */
   run(inputSequence) {
+    const useEpsilonClosure = this.epsilonTransitions.size > 0;
+
+    const epsilonClosureOfSet = (states) => {
+      const closed = new Set();
+      for (const s of states) {
+        for (const t of this.getEpsilonClosure(s)) {
+          closed.add(t);
+        }
+      }
+      return closed;
+    };
+
     let currentStates = new Set(this.startStates);
+    if (useEpsilonClosure) {
+      currentStates = epsilonClosureOfSet(currentStates);
+    }
     const trace = [{ step: 0, input: null, states: [...currentStates] }];
 
     for (let i = 0; i < inputSequence.length; i++) {
@@ -379,7 +426,7 @@ export class NFA {
         }
       }
 
-      currentStates = nextStates;
+      currentStates = useEpsilonClosure ? epsilonClosureOfSet(nextStates) : nextStates;
       trace.push({ step: i + 1, input: symbols, states: [...currentStates] });
 
       if (currentStates.size === 0) break;
@@ -426,20 +473,12 @@ export class NFA {
     return [...byTarget.entries()].map(([to, symbols]) => ({ to, symbols }));
   }
 
-  hasEnforcedEpsilonTransitions() {
-    return this.epsilonTransitions.size === 0 || this.epsilonClosureInfo !== null;
-  }
-
   /**
    * Create a reversed NFA where all transitions are flipped.
    * Start states become accept states and vice versa.
    * @returns {NFA} A new NFA with reversed transitions
    */
   reverse() {
-    if (!this.hasEnforcedEpsilonTransitions()) {
-      throw new Error('Epsilon transitions must be enforced before reversing the NFA.');
-    }
-
     const reversed = new NFA(this.symbols);
     const numStates = this._transitions.length;
 
@@ -467,6 +506,13 @@ export class NFA {
       }
     }
 
+    // Reverse epsilon transitions
+    for (const [fromId, targets] of this.epsilonTransitions.entries()) {
+      for (const toId of targets) {
+        reversed.addEpsilonTransition(toId, fromId);
+      }
+    }
+
     return reversed;
   }
 
@@ -479,6 +525,8 @@ export class NFA {
     const queue = [...this.startStates];
     let queueHead = 0;
 
+    const hasEpsilon = this.epsilonTransitions.size > 0;
+
     while (queueHead < queue.length) {
       const stateId = queue[queueHead++];
       const stateTransitions = this._transitions[stateId];
@@ -490,6 +538,18 @@ export class NFA {
           if (!reachable.has(toId)) {
             reachable.add(toId);
             queue.push(toId);
+          }
+        }
+      }
+
+      if (hasEpsilon) {
+        const epsTargets = this.epsilonTransitions.get(stateId);
+        if (epsTargets) {
+          for (const toId of epsTargets) {
+            if (!reachable.has(toId)) {
+              reachable.add(toId);
+              queue.push(toId);
+            }
           }
         }
       }
@@ -513,7 +573,8 @@ export class NFA {
     }
 
     // In the reversed NFA, states reachable from start (= original accept)
-    // are exactly those that can reach accept in the original
+    // are exactly those that can reach accept in the original.
+    // reverse() and getReachableStates() are epsilon-aware.
     const canReachAccept = this.reverse().getReachableStates();
 
     // Dead states are those that cannot reach any accept state
@@ -538,6 +599,10 @@ export class NFA {
    * @returns {StateTransformation} Transformation that merges equivalent states
    */
   getEquivalentStateRemap(transform = null) {
+    if (this.epsilonTransitions.size > 0) {
+      throw new Error('Cannot compute equivalent states on NFA with epsilon transitions');
+    }
+
     const numStates = this._transitions.length;
     if (numStates === 0) {
       return transform || StateTransformation.identity(0);

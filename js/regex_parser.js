@@ -253,7 +253,6 @@ export class RegexToNFABuilder {
     const nfa = this._nfa;
     nfa.addStart(fragment.startId);
     nfa.addAccept(fragment.acceptId);
-    nfa.enforceEpsilonTransitions();
 
     // Simplify names: remove subscript if count is 1
     const remappedLabels = new Map();

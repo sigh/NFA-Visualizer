@@ -711,6 +711,9 @@ class App {
     const views = [];
     const numStates = nfa.numStates();
 
+    // The pipeline can swap to a derived NFA at certain stages (e.g. ε-Closure).
+    let stageNfa = nfa;
+
     // Keep track of the current transform as we progress through stages
     let currentTransform = StateTransformation.identity(numStates);
 
@@ -719,62 +722,45 @@ class App {
 
       switch (stage) {
         case STAGES.RAW:
-          // Identity transform, show explicit epsilon transitions
-          view = new NFAView(
-            nfa,
-            StateTransformation.identity(numStates),
-            { showEpsilonTransitions: true }
-          );
+          // Identity transform for the raw NFA (explicit epsilon edges come from the NFA itself)
+          view = new NFAView(stageNfa, StateTransformation.identity(numStates));
           break;
 
         case STAGES.EPSILON:
-          // Identity transform, hide explicit epsilon transitions (implicit closure)
-          view = new NFAView(
-            nfa,
-            StateTransformation.identity(numStates),
-            { showEpsilonTransitions: false }
-          );
+          // Create a new NFA with epsilon-closure enforced (no explicit epsilon edges)
+          stageNfa = stageNfa.clone();
+          stageNfa.enforceEpsilonTransitions();
+
+          view = new NFAView(stageNfa, StateTransformation.identity(numStates));
           break;
 
         case STAGES.EXPAND:
           // Same as EPSILON but conceptually different for DFA (start of pipeline)
-          view = new NFAView(
-            nfa,
-            StateTransformation.identity(numStates),
-            { showEpsilonTransitions: false }
-          );
+          view = new NFAView(stageNfa, StateTransformation.identity(numStates));
           break;
 
         case STAGES.PRUNE:
           // Hide dead states
-          const deadTransform = nfa.getDeadStates();
+          const deadTransform = stageNfa.getDeadStates();
           currentTransform = currentTransform.compose(deadTransform);
 
-          view = new NFAView(
-            nfa,
-            currentTransform,
-            { showEpsilonTransitions: false }
-          );
+          view = new NFAView(stageNfa, currentTransform);
           break;
 
         case STAGES.MERGE:
           // Merge equivalent states
-          const mergeTransform = nfa.getEquivalentStateRemap(currentTransform);
+          const mergeTransform = stageNfa.getEquivalentStateRemap(currentTransform);
           // Note: getEquivalentStateRemap builds upon the input transform,
           // so we don't need to compose it manually if we pass currentTransform
           // However, for consistency with how we track currentTransform:
           currentTransform = mergeTransform;
 
-          view = new NFAView(
-            nfa,
-            currentTransform,
-            { showEpsilonTransitions: false }
-          );
+          view = new NFAView(stageNfa, currentTransform);
           break;
 
         default:
           console.warn(`Unknown pipeline stage: ${stage}`);
-          view = new NFAView(nfa, currentTransform);
+          view = new NFAView(stageNfa, currentTransform);
       }
 
       views.push(view);
@@ -874,7 +860,7 @@ class App {
     // Determine machine type
     let type = 'NFA';
     const isDeterministic = view.isDeterministic();
-    const hasEpsilons = view.showEpsilonTransitions && view.nfa.epsilonTransitions.size > 0;
+    const hasEpsilons = view.nfa.epsilonTransitions.size > 0;
 
     if (hasEpsilons) {
       type = 'ε-NFA';
@@ -1045,11 +1031,8 @@ class App {
     // Get transitions mapped through current transform
     const byCanonicalTarget = this.view.getTransitionsFrom(stateId);
 
-    // Get epsilon transitions if enabled
-    let epsilonTargets = new Set();
-    if (this.view.showEpsilonTransitions) {
-      epsilonTargets = this.view.getEpsilonTransitionsFrom(stateId);
-    }
+    // Epsilon transitions (if any)
+    const epsilonTargets = this.view.getEpsilonTransitionsFrom(stateId);
 
     const prefix = this.view.getStateIdPrefix();
     if (byCanonicalTarget.size === 0 && epsilonTargets.size === 0) {

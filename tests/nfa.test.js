@@ -165,6 +165,35 @@ describe('NFA', () => {
     });
   });
 
+  describe('clone()', () => {
+    test('deep-copies transitions and epsilon transitions', () => {
+      const nfa = new NFA(['a']);
+      const s0 = nfa.addState('s0');
+      const s1 = nfa.addState('s1');
+      const s2 = nfa.addState('s2');
+      nfa.addStart(s0);
+      nfa.addAccept(s2);
+      nfa.addTransition(s0, s1, 0);
+      nfa.addEpsilonTransition(s1, s2);
+
+      const cloned = nfa.clone();
+      assert.notStrictEqual(cloned, nfa);
+      assert.deepStrictEqual(cloned.symbols, nfa.symbols);
+      assert.deepStrictEqual(cloned.stateLabels, nfa.stateLabels);
+      assert.deepStrictEqual([...cloned.startStates], [...nfa.startStates]);
+      assert.deepStrictEqual([...cloned.acceptStates], [...nfa.acceptStates]);
+      assert.deepStrictEqual(cloned.getTransitions(s0, 0), nfa.getTransitions(s0, 0));
+      assert(cloned.epsilonTransitions.get(s1).has(s2));
+
+      // Mutating the clone should not affect the original
+      cloned.addTransition(s0, s2, 0);
+      assert(!nfa.getTransitions(s0, 0).includes(s2));
+
+      cloned.addEpsilonTransition(s0, s2);
+      assert(!nfa.epsilonTransitions.get(s0));
+    });
+  });
+
   describe('hasSymbol()', () => {
     test('returns true for existing symbols', () => {
       const nfa = new NFA(['a', 'b']);
@@ -371,6 +400,37 @@ describe('NFA', () => {
       assert.deepStrictEqual(result.trace[0].states, [s0]);
     });
 
+    test('uses epsilon closure for empty input (without enforcement)', () => {
+      const nfa = new NFA(['a']);
+      const s0 = nfa.addState();
+      const s1 = nfa.addState();
+      nfa.addStart(s0);
+      nfa.addAccept(s1);
+      // s0 --epsilon--> s1
+      nfa.addEpsilonTransition(s0, s1);
+
+      const result = nfa.run([]);
+      assert(result.accepted);
+      assert.deepStrictEqual(new Set(result.trace[0].states), new Set([s0, s1]));
+    });
+
+    test('applies epsilon closure after each step (without enforcement)', () => {
+      const nfa = new NFA(['a']);
+      const s0 = nfa.addState();
+      const s1 = nfa.addState();
+      const s2 = nfa.addState();
+      nfa.addStart(s0);
+      nfa.addAccept(s2);
+      // s0 --a--> s1
+      nfa.addTransition(s0, s1, 0);
+      // s1 --epsilon--> s2
+      nfa.addEpsilonTransition(s1, s2);
+
+      const result = nfa.run([['a']]);
+      assert(result.accepted);
+      assert.deepStrictEqual(new Set(result.trace[1].states), new Set([s1, s2]));
+    });
+
     test('handles cycles correctly', () => {
       const nfa = new NFA(['a']);
       const s0 = nfa.addState();
@@ -465,6 +525,20 @@ describe('NFA', () => {
       assert(reversed.isStart(s1));
       assert(reversed.isAccepting(s0));
     });
+
+    test('reverses epsilon transitions', () => {
+      const nfa = new NFA(['a']);
+      const s0 = nfa.addState();
+      const s1 = nfa.addState();
+      nfa.addStart(s0);
+      nfa.addAccept(s1);
+      nfa.addEpsilonTransition(s0, s1);
+
+      const reversed = nfa.reverse();
+      const epsFromS1 = reversed.epsilonTransitions.get(s1);
+      assert(epsFromS1);
+      assert(epsFromS1.has(s0));
+    });
   });
 
   describe('getReachableStates()', () => {
@@ -489,6 +563,18 @@ describe('NFA', () => {
 
       const reachable = nfa.getReachableStates();
       assert(reachable.has(s0));
+    });
+
+    test('traverses epsilon transitions', () => {
+      const nfa = new NFA(['a']);
+      const s0 = nfa.addState();
+      const s1 = nfa.addState();
+      nfa.addStart(s0);
+      nfa.addEpsilonTransition(s0, s1);
+
+      const reachable = nfa.getReachableStates();
+      assert(reachable.has(s0));
+      assert(reachable.has(s1));
     });
   });
 
@@ -521,6 +607,78 @@ describe('NFA', () => {
       assert.strictEqual(dead.getDeletedStates().size, 0);
     });
 
+    test('treats epsilon-only path to accept as not dead', () => {
+      const nfa = new NFA(['a']);
+      const s0 = nfa.addState();
+      const s1 = nfa.addState();
+      const s2 = nfa.addState();
+
+      nfa.addStart(s0);
+      nfa.addAccept(s1);
+      // s0 --epsilon--> s1 (so s0 can reach accept)
+      nfa.addEpsilonTransition(s0, s1);
+      // s2 is dead
+
+      const dead = nfa.getDeadStates();
+      assert(!dead.isDeleted(s0));
+      assert(!dead.isDeleted(s1));
+      assert(dead.isDeleted(s2));
+    });
+
+  });
+
+  describe('getEpsilonClosure()', () => {
+    test('computes and caches closure', () => {
+      const nfa = new NFA(['a']);
+      const s0 = nfa.addState();
+      const s1 = nfa.addState();
+      const s2 = nfa.addState();
+
+      nfa.addEpsilonTransition(s0, s1);
+      const c1 = nfa.getEpsilonClosure(s0);
+      assert(c1.has(s0));
+      assert(c1.has(s1));
+      assert(!c1.has(s2));
+
+      const c2 = nfa.getEpsilonClosure(s0);
+      assert.strictEqual(c1, c2); // cached
+    });
+
+    test('throws if epsilon graph is mutated after closure is computed', () => {
+      const nfa = new NFA(['a']);
+      const s0 = nfa.addState();
+      const s1 = nfa.addState();
+      const s2 = nfa.addState();
+
+      nfa.addEpsilonTransition(s0, s1);
+      nfa.getEpsilonClosure(s0);
+
+      assert.throws(() => nfa.addEpsilonTransition(s1, s2), /Cannot add epsilon transition/);
+    });
+
+    test('enforceEpsilonTransitions() clears explicit epsilon transitions', () => {
+      const nfa = new NFA(['a']);
+      const s0 = nfa.addState();
+      const s1 = nfa.addState();
+
+      nfa.addStart(s0);
+      nfa.addEpsilonTransition(s0, s1);
+      nfa.enforceEpsilonTransitions();
+
+      assert.strictEqual(nfa.epsilonTransitions.size, 0);
+      assert(nfa.isStart(s1));
+    });
+
+    test('throws if epsilon graph is mutated after enforceEpsilonTransitions()', () => {
+      const nfa = new NFA(['a']);
+      const s0 = nfa.addState();
+      const s1 = nfa.addState();
+      const s2 = nfa.addState();
+      nfa.addEpsilonTransition(s0, s1);
+      nfa.enforceEpsilonTransitions();
+
+      assert.throws(() => nfa.addEpsilonTransition(s1, s2), /Cannot add epsilon transition/);
+    });
   });
 
   describe('getEquivalentStateRemap()', () => {
@@ -605,7 +763,6 @@ describe('NFA', () => {
       nfa.enforceEpsilonTransitions();
 
       assert(nfa.isStart(s1));
-      assert(nfa.epsilonClosureInfo.addedStartStates.has(s1));
     });
 
     test('propagates accept status backwards', () => {
@@ -619,7 +776,6 @@ describe('NFA', () => {
       nfa.enforceEpsilonTransitions();
 
       assert(nfa.isAccepting(s0));
-      assert(nfa.epsilonClosureInfo.addedAcceptStates.has(s0));
     });
 
     test('handles epsilon cycles', () => {

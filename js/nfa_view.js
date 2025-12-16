@@ -17,19 +17,10 @@ export class NFAView {
   /**
    * @param {NFA} nfa - The NFA
    * @param {StateTransformation} transform - The transformation to apply
-   * @param {Object} [options] - View options
-   * @param {boolean} [options.showEpsilonTransitions] - Whether to show explicit epsilon transitions (raw NFA mode)
    */
-  constructor(nfa, transform, options = {}) {
+  constructor(nfa, transform) {
     this.nfa = nfa;
     this.transform = transform;
-
-    // Only allow showing explicit epsilon transitions if we have an identity transform
-    // This simplifies logic by avoiding edge cases with merged/deleted states
-    if (options.showEpsilonTransitions && !this.transform.isIdentity()) {
-      throw new Error('Cannot show explicit epsilon transitions with a non-identity transform');
-    }
-    this.showEpsilonTransitions = !!options.showEpsilonTransitions;
 
     // Compute merged sources once
     this.mergedSources = this._computeMergedSources();
@@ -96,7 +87,6 @@ export class NFAView {
    */
   isStart(stateId) {
     if (!this.nfa.startStates.has(stateId)) return false;
-    if (this.showEpsilonTransitions && this.nfa.epsilonClosureInfo?.addedStartStates.has(stateId)) return false;
     return true;
   }
 
@@ -107,7 +97,6 @@ export class NFAView {
    */
   isAccepting(stateId) {
     if (!this.nfa.acceptStates.has(stateId)) return false;
-    if (this.showEpsilonTransitions && this.nfa.epsilonClosureInfo?.addedAcceptStates.has(stateId)) return false;
     return true;
   }
 
@@ -144,8 +133,8 @@ export class NFAView {
    * @returns {boolean}
    */
   isDeterministic() {
-    // If showing explicit epsilon transitions, check if any exist
-    if (this.showEpsilonTransitions && this.nfa.epsilonTransitions.size > 0) {
+    // Any epsilon transitions make this machine non-deterministic.
+    if (this.nfa.epsilonTransitions.size > 0) {
       return false;
     }
 
@@ -181,27 +170,12 @@ export class NFAView {
       const canonical = this.transform.remap[to];
       if (canonical === -1) continue; // Skip deleted states
 
-      let visibleSymbols = symbols;
-      if (this.showEpsilonTransitions) {
-        // When showing explicit epsilon transitions, we want to HIDE the closure artifacts
-        // (transitions added by epsilon closure).
-        // The transform is identity, so stateId/to are original IDs.
-        const addedFrom = this.nfa.epsilonClosureInfo?.addedTransitions.get(stateId);
-        if (addedFrom) {
-          visibleSymbols = symbols.filter(symbol => {
-            const symbolIndex = this.nfa.getSymbolIndex(symbol);
-            const addedTo = addedFrom.get(symbolIndex);
-            return !addedTo || !addedTo.has(to);
-          });
-        }
-      }
-
-      if (visibleSymbols.length === 0) continue;
+      if (symbols.length === 0) continue;
 
       if (!byCanonicalTarget.has(canonical)) {
         byCanonicalTarget.set(canonical, new Set());
       }
-      for (const symbol of visibleSymbols) {
+      for (const symbol of symbols) {
         byCanonicalTarget.get(canonical).add(symbol);
       }
     }
@@ -224,31 +198,12 @@ export class NFAView {
     const nfa = this.nfa;
     const deadTransform = nfa.getDeadStates();
 
-    if (!nfa.hasEnforcedEpsilonTransitions()) {
-      throw new Error(
-        'Warning: NFA has epsilon transitions but no epsilon closure info');
-    }
-
-    // In raw NFA mode (explicit epsilons), treat a state as live if any
-    // state in its epsilon-closure is live.
-    const hasLiveStateInClosure = (stateId) => {
-      // If we don't have epsilon closure info, there are no epsilon transitions.
-      if (!nfa.epsilonClosureInfo) return false;
-
-      const closure = nfa.epsilonClosureInfo.epsilonClosure.get(stateId);
-      for (const id of closure) {
-        if (!deadTransform.isDeleted(id)) return true;
-      }
-      return false;
-    };
-
     return Array.from({ length: nfa.numStates() }, (_, id) => {
       return {
         id,
         isStart: this.isStart(id),
         isAccept: this.isAccepting(id),
-        isDead: deadTransform.isDeleted(id)
-          && !(this.showEpsilonTransitions && hasLiveStateInClosure(id)),
+        isDead: deadTransform.isDeleted(id),
       };
     });
   }
@@ -259,14 +214,21 @@ export class NFAView {
    * @returns {Set<number>} Set of canonical target states
    */
   getEpsilonTransitionsFrom(stateId) {
-    if (!this.showEpsilonTransitions) {
-      return new Set();
+    const epsilonTargets = new Set();
+    const sources = this.mergedSources.get(stateId) || [];
+
+    for (const sourceId of sources) {
+      const targets = this.nfa.epsilonTransitions.get(sourceId);
+      if (!targets) continue;
+
+      for (const to of targets) {
+        const canonical = this.transform.remap[to];
+        if (canonical === -1) continue;
+        epsilonTargets.add(canonical);
+      }
     }
 
-    // Since showEpsilonTransitions requires an identity transform,
-    // we don't need to handle merged states or remapping.
-    // stateId is the original state ID.
-    return this.nfa.epsilonTransitions.get(stateId) || new Set();
+    return epsilonTargets;
   }
 
   /**
