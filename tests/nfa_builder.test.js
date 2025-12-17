@@ -675,12 +675,10 @@ describe('epsilon transitions', () => {
     const builder = new NFABuilder(config, { symbols: ['a'] });
     const nfa = builder.build();
 
-    const closure = nfa.getEpsilonClosure(0);
-    assert.strictEqual(closure.size, 4);
-    assert(closure.has(0));
-    assert(closure.has(1));
-    assert(closure.has(2));
-    assert(closure.has(3));
+    nfa.enforceEpsilonTransitions();
+
+    // All 4 states should be start states
+    assert.strictEqual(nfa.startStates.size, 4);
 
     // Empty string should be accepted
     const result = nfa.run([]);

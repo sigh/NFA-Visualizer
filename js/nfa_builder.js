@@ -154,7 +154,10 @@ export class NFABuilder {
         const closureId = addState(closureState);
 
         // Record explicit epsilon transition
-        nfa.addEpsilonTransition(currentId, closureId);
+        if (!nfa.epsilonTransitions.has(currentId)) {
+          nfa.epsilonTransitions.set(currentId, new Set());
+        }
+        nfa.epsilonTransitions.get(currentId).add(closureId);
 
         if (!visited.has(closureId)) {
           queue.push(closureId);

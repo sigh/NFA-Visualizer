@@ -25,7 +25,7 @@ describe('NFAView', () => {
       const nfa = createTestNFA();
       nfa.addState(); // q0
       const transform = StateTransformation.identity(1);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       assert.strictEqual(view.nfa, nfa);
       assert.strictEqual(view.transform, transform);
@@ -36,7 +36,7 @@ describe('NFAView', () => {
       nfa.addState(); // q0
       nfa.addState(); // q1
       const transform = StateTransformation.identity(2);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       assert(view.mergedSources instanceof Map);
       assert.strictEqual(view.mergedSources.size, 2);
@@ -50,7 +50,7 @@ describe('NFAView', () => {
       nfa.addState(); // q1
       nfa.addState(); // q2
       const transform = StateTransformation.identity(3);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       assert.deepStrictEqual(view.mergedSources.get(0), [0]);
       assert.deepStrictEqual(view.mergedSources.get(1), [1]);
@@ -64,7 +64,7 @@ describe('NFAView', () => {
       nfa.addState(); // q2
       // q1 and q2 merge into q1
       const transform = new StateTransformation(new Int32Array([0, 1, 1]));
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       assert.deepStrictEqual(view.mergedSources.get(0), [0]);
       assert.deepStrictEqual(view.mergedSources.get(1), [1, 2]);
@@ -77,7 +77,7 @@ describe('NFAView', () => {
       nfa.addState(); // q1
       nfa.addState(); // q2
       const transform = StateTransformation.deletion(3, new Set([1]));
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       assert.deepStrictEqual(view.mergedSources.get(0), [0]);
       assert.strictEqual(view.mergedSources.has(1), false);
@@ -91,7 +91,7 @@ describe('NFAView', () => {
       nfa.addState(); // q0
       nfa.addState(); // q1
       const transform = StateTransformation.identity(2);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       assert.strictEqual(view.isCanonical(0), true);
       assert.strictEqual(view.isCanonical(1), true);
@@ -104,7 +104,7 @@ describe('NFAView', () => {
       nfa.addState(); // q2
       // q2 merges into q1
       const transform = new StateTransformation(new Int32Array([0, 1, 1]));
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       assert.strictEqual(view.isCanonical(0), true);
       assert.strictEqual(view.isCanonical(1), true);
@@ -116,7 +116,7 @@ describe('NFAView', () => {
       nfa.addState(); // q0
       nfa.addState(); // q1
       const transform = StateTransformation.deletion(2, new Set([1]));
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       assert.strictEqual(view.isCanonical(0), true);
       assert.strictEqual(view.isCanonical(1), false);
@@ -129,7 +129,7 @@ describe('NFAView', () => {
       nfa.addState(); // q0
       nfa.addState(); // q1
       const transform = StateTransformation.identity(2);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       assert.strictEqual(view.getCanonical(0), 0);
       assert.strictEqual(view.getCanonical(1), 1);
@@ -142,7 +142,7 @@ describe('NFAView', () => {
       nfa.addState(); // q2
       // q2 merges into q1
       const transform = new StateTransformation(new Int32Array([0, 1, 1]));
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       assert.strictEqual(view.getCanonical(0), 0);
       assert.strictEqual(view.getCanonical(1), 1);
@@ -154,7 +154,7 @@ describe('NFAView', () => {
       nfa.addState(); // q0
       nfa.addState(); // q1
       const transform = StateTransformation.deletion(2, new Set([1]));
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       assert.strictEqual(view.getCanonical(0), 0);
       assert.strictEqual(view.getCanonical(1), -1);
@@ -167,7 +167,7 @@ describe('NFAView', () => {
       nfa.addState(); // q0
       nfa.addState(); // q1
       const transform = StateTransformation.identity(2);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       assert.strictEqual(view.isMergedState(0), false);
       assert.strictEqual(view.isMergedState(1), false);
@@ -180,7 +180,7 @@ describe('NFAView', () => {
       nfa.addState(); // q2
       // q1 and q2 merge into q1
       const transform = new StateTransformation(new Int32Array([0, 1, 1]));
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       assert.strictEqual(view.isMergedState(0), false);
       assert.strictEqual(view.isMergedState(1), true);
@@ -192,7 +192,7 @@ describe('NFAView', () => {
       nfa.addState(); // q1
       nfa.addState(); // q2
       const transform = new StateTransformation(new Int32Array([0, 1, 1]));
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       // q2 is not canonical, so it's not in mergedSources
       assert.strictEqual(view.isMergedState(2), false);
@@ -208,7 +208,7 @@ describe('NFAView', () => {
       nfa.addState();      // q2
       nfa.addStart(0);
       const transform = StateTransformation.identity(3);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       const stats = view.getStats();
       assert.strictEqual(stats.total, 3);
@@ -223,7 +223,7 @@ describe('NFAView', () => {
       nfa.addState();      // q2
       // q2 merges into q1
       const transform = new StateTransformation(new Int32Array([0, 1, 1]));
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       const stats = view.getStats();
       assert.strictEqual(stats.total, 2);
@@ -235,7 +235,7 @@ describe('NFAView', () => {
       nfa.addState(); // q1
       nfa.addState(); // q2
       const transform = StateTransformation.deletion(3, new Set([1]));
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       const stats = view.getStats();
       assert.strictEqual(stats.total, 2);
@@ -247,7 +247,7 @@ describe('NFAView', () => {
       const nfa = createTestNFA();
       nfa.addState(); // q0
       const transform = StateTransformation.identity(1);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       const transitions = view.getTransitionsFrom(0);
       assert.strictEqual(transitions.size, 0);
@@ -259,7 +259,7 @@ describe('NFAView', () => {
       nfa.addState(); // q1
       nfa.addTransition(0, 1, 0); // q0 --a--> q1
       const transform = StateTransformation.identity(2);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       const transitions = view.getTransitionsFrom(0);
       assert.strictEqual(transitions.size, 1);
@@ -276,7 +276,7 @@ describe('NFAView', () => {
       nfa.addTransition(0, 2, 1); // q0 --b--> q2
       // q2 merges into q1
       const transform = new StateTransformation(new Int32Array([0, 1, 1]));
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       const transitions = view.getTransitionsFrom(0);
       assert.strictEqual(transitions.size, 1);
@@ -292,7 +292,7 @@ describe('NFAView', () => {
       nfa.addTransition(0, 1, 0); // q0 --a--> q1
       nfa.addTransition(0, 2, 1); // q0 --b--> q2
       const transform = StateTransformation.deletion(3, new Set([2]));
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       const transitions = view.getTransitionsFrom(0);
       assert.strictEqual(transitions.size, 1);
@@ -308,7 +308,7 @@ describe('NFAView', () => {
       nfa.addTransition(0, 1, 0); // q0 --a--> q1
       nfa.addTransition(0, 1, 1); // q0 --b--> q1
       const transform = StateTransformation.identity(2);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       const transitions = view.getTransitionsFrom(0);
       assert.deepStrictEqual(transitions.get(1), ['a', 'b', 'c']);
@@ -319,7 +319,7 @@ describe('NFAView', () => {
       nfa.addState(); // q0
       nfa.addTransition(0, 0, 0); // q0 --a--> q0
       const transform = StateTransformation.identity(1);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       const transitions = view.getTransitionsFrom(0);
       assert.strictEqual(transitions.size, 1);
@@ -336,7 +336,7 @@ describe('NFAView', () => {
       nfa.addStart(0);
       nfa.addTransition(0, 1, 0); // q0 --a--> q1
       const transform = StateTransformation.identity(2);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       assert.strictEqual(view.isDeterministic(), true);
     });
@@ -350,7 +350,7 @@ describe('NFAView', () => {
       nfa.addTransition(0, 1, 0); // q0 --a--> q1
       nfa.addTransition(0, 2, 0); // q0 --a--> q2
       const transform = StateTransformation.identity(3);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       assert.strictEqual(view.isDeterministic(), false);
     });
@@ -362,7 +362,7 @@ describe('NFAView', () => {
       nfa.addStart(0);
       nfa.addStart(1);
       const transform = StateTransformation.identity(2);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       assert.strictEqual(view.isDeterministic(), false);
     });
@@ -374,7 +374,7 @@ describe('NFAView', () => {
       nfa.addStart(0);
       nfa.addEpsilonTransition(0, 1);
       const transform = StateTransformation.identity(2);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       assert.strictEqual(view.isDeterministic(), false);
     });
@@ -393,7 +393,7 @@ describe('NFAView', () => {
       nfa.addTransition(s1, s2, 0);
 
       const transform = StateTransformation.identity(3);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       const info = view.getStateInfo();
       const startInfo = info.find(s => s.id === s0);
@@ -408,7 +408,7 @@ describe('NFAView', () => {
       nfa.addState(); // q0
       nfa.stateLabels[0] = 'q0';
       const transform = StateTransformation.identity(1);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       const sources = view.getResolvedSources(0);
       assert.strictEqual(sources.length, 1);
@@ -425,7 +425,7 @@ describe('NFAView', () => {
 
       // Map both to 0
       const transform = new StateTransformation([0, 0]);
-      const view = new NFAView(nfa, transform);
+      const view = new NFAView(nfa, { transform });
 
       const sources = view.getResolvedSources(0);
       assert.strictEqual(sources.length, 2);
@@ -448,7 +448,7 @@ describe('NFAView', () => {
       derivedNfa.stateLabels[0] = '0,2';
 
       const transform = StateTransformation.identity(1);
-      const view = new NFAView(derivedNfa, transform);
+      const view = new NFAView(derivedNfa, { transform });
 
       const sources = view.getResolvedSources(0);
       assert.strictEqual(sources.length, 2);

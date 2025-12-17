@@ -19,24 +19,30 @@ export class NFAView {
   /**
    * Create a base view with an identity transform.
    * @param {NFA} nfa
-   * @param {any} [layoutState] - Opaque layout state owned by the visualizer
+   * @param {{
+   *   layoutState?: any,
+   * }} [options]
    * @returns {NFAView}
    */
-  static fromNFA(nfa, layoutState = null) {
-    return new NFAView(nfa, StateTransformation.identity(nfa.numStates()), layoutState);
+  static fromNFA(nfa, options = {}) {
+    return new NFAView(nfa, {
+      transform: StateTransformation.identity(nfa.numStates()),
+      layoutState: options.layoutState,
+    });
   }
 
   /**
    * @param {NFA} nfa - The NFA
-   * @param {StateTransformation} transform - The transformation to apply
-   * @param {any} [layoutState] - Opaque layout state owned by the visualizer
+   * @param {{
+   *   transform?: StateTransformation,
+   *   layoutState?: any,
+   * }} [options]
    */
-  constructor(nfa, transform, layoutState = null) {
+  constructor(nfa, options = {}) {
     this.nfa = nfa;
-    this.transform = transform;
 
-    // Opaque layout state (visualizer-owned). This view must not inspect it.
-    this.layoutState = layoutState;
+    this.transform = options.transform ?? StateTransformation.identity(nfa.numStates());
+    this.layoutState = options.layoutState ?? null;
 
     // Compute merged sources once
     this.mergedSources = this._computeMergedSources();
@@ -68,7 +74,7 @@ export class NFAView {
     if (this.nfa.epsilonTransitions.size === 0) return this;
     const cloned = this.nfa.clone();
     cloned.enforceEpsilonTransitions();
-    return NFAView.fromNFA(cloned, this.layoutState);
+    return NFAView.fromNFA(cloned, { layoutState: this.layoutState });
   }
 
   /**
@@ -81,7 +87,10 @@ export class NFAView {
 
     const nextTransform = this.transform.compose(deadTransform);
     if (this._hasSameTransform(nextTransform)) return this;
-    return new NFAView(this.nfa, nextTransform, this.layoutState);
+    return new NFAView(this.nfa, {
+      layoutState: this.layoutState,
+      transform: nextTransform,
+    });
   }
 
   /**
@@ -91,7 +100,10 @@ export class NFAView {
   withEquivalentStatesMerged() {
     const mergedTransform = this.nfa.getEquivalentStateRemap(this.transform);
     if (this._hasSameTransform(mergedTransform)) return this;
-    return new NFAView(this.nfa, mergedTransform, this.layoutState);
+    return new NFAView(this.nfa, {
+      layoutState: this.layoutState,
+      transform: mergedTransform,
+    });
   }
 
   getStateIdPrefix() {

@@ -713,7 +713,7 @@ class App {
     const layoutState = this.visualizer?.createLayoutState?.() || null;
 
     // Start from a base view (identity transform).
-    let view = NFAView.fromNFA(nfa, layoutState);
+    let view = NFAView.fromNFA(nfa, { layoutState });
 
     for (const stage of stages) {
       switch (stage) {

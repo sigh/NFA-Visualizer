@@ -41,11 +41,9 @@ describe('DFABuilder', () => {
     const nfa = builder.build();
 
     // Create a view (identity transform, no explicit epsilons)
-    const view = new NFAView(
-      nfa,
-      StateTransformation.identity(nfa.numStates()),
-      { showEpsilonTransitions: false }
-    );
+    const view = new NFAView(nfa, {
+      transform: StateTransformation.identity(nfa.numStates())
+    });
 
     const dfa = DFABuilder.build(view);
 
@@ -85,11 +83,9 @@ describe('DFABuilder', () => {
 
     // Create a view (identity transform, showEpsilonTransitions: false)
     // This view should expose the effective transitions (0 --a--> 2)
-    const view = new NFAView(
-      nfa,
-      StateTransformation.identity(nfa.numStates()),
-      { showEpsilonTransitions: false }
-    );
+    const view = new NFAView(nfa, {
+      transform: StateTransformation.identity(nfa.numStates())
+    });
 
     const dfa = DFABuilder.build(view);
 
