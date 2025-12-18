@@ -11,6 +11,7 @@
  */
 
 import { StateTransformation } from './nfa.js';
+import { DFABuilder } from './dfa_builder.js';
 
 /**
  * A view of an NFA with a transformation applied
@@ -21,6 +22,8 @@ export class NFAView {
    * @param {NFA} nfa
    * @param {{
    *   layoutState?: any,
+   *   stateIdPrefix?: string,
+   *   sourceView?: NFAView,
    * }} [options]
    * @returns {NFAView}
    */
@@ -28,6 +31,8 @@ export class NFAView {
     return new NFAView(nfa, {
       transform: StateTransformation.identity(nfa.numStates()),
       layoutState: options.layoutState,
+      stateIdPrefix: options.stateIdPrefix,
+      sourceView: options.sourceView,
     });
   }
 
@@ -36,6 +41,8 @@ export class NFAView {
    * @param {{
    *   transform?: StateTransformation,
    *   layoutState?: any,
+   *   stateIdPrefix?: string,
+   *   sourceView?: NFAView,
    * }} [options]
    */
   constructor(nfa, options = {}) {
@@ -43,6 +50,14 @@ export class NFAView {
 
     this.transform = options.transform ?? StateTransformation.identity(nfa.numStates());
     this.layoutState = options.layoutState ?? null;
+
+    // The original (raw) view this view was derived from.
+    // For the raw view itself, this points to itself.
+    this._sourceView = options.sourceView ?? this;
+
+    // The prefix used for displaying state IDs in this view.
+    // Derived views inherit this by default.
+    this._stateIdPrefix = options.stateIdPrefix ?? null;
 
     // Compute merged sources once
     this.mergedSources = this._computeMergedSources();
@@ -74,7 +89,11 @@ export class NFAView {
     if (this.nfa.epsilonTransitions.size === 0) return this;
     const cloned = this.nfa.clone();
     cloned.enforceEpsilonTransitions();
-    return NFAView.fromNFA(cloned, { layoutState: this.layoutState });
+    return NFAView.fromNFA(cloned, {
+      layoutState: this.layoutState,
+      stateIdPrefix: this._stateIdPrefix,
+      sourceView: this._sourceView,
+    });
   }
 
   /**
@@ -90,6 +109,8 @@ export class NFAView {
     return new NFAView(this.nfa, {
       layoutState: this.layoutState,
       transform: nextTransform,
+      stateIdPrefix: this._stateIdPrefix,
+      sourceView: this._sourceView,
     });
   }
 
@@ -103,15 +124,42 @@ export class NFAView {
     return new NFAView(this.nfa, {
       layoutState: this.layoutState,
       transform: mergedTransform,
+      stateIdPrefix: this._stateIdPrefix,
+      sourceView: this._sourceView,
+    });
+  }
+
+  /**
+   * Derive a DFA view using subset construction.
+   * The resulting view has an identity transform and a primed state ID prefix.
+   *
+   * Note: this requires a view with no explicit epsilon transitions
+   * (i.e. epsilon closure already applied).
+   *
+   * @returns {NFAView}
+   */
+  withSubsetExpansion() {
+    if (this.nfa.epsilonTransitions.size > 0) {
+      throw new Error('withSubsetExpansion() requires a view with no explicit epsilon transitions (apply withEpsilonClosure() first).');
+    }
+
+    const dfa = DFABuilder.build(this);
+    const rawView = this._sourceView;
+
+    return NFAView.fromNFA(dfa, {
+      // DFA layout should be independent from the source NFA layout.
+      layoutState: null,
+      sourceView: rawView,
+      stateIdPrefix: `${rawView.getStateIdPrefix()}'`,
     });
   }
 
   getStateIdPrefix() {
-    return this.nfa.parentNfa ? "q'" : 'q';
+    return this._stateIdPrefix;
   }
 
   getSourceStateIdPrefix() {
-    return 'q';
+    return this._sourceView._stateIdPrefix;
   }
 
   /**

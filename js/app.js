@@ -8,7 +8,6 @@
 
 import { CodeJar } from '../lib/codejar.min.js';
 import { NFABuilder, parseNFAConfig, buildCodeFromSplit, parseSplitFromCode, expandSymbolClass } from './nfa_builder.js';
-import { DFABuilder } from './dfa_builder.js';
 import { RegexParser, RegexToNFABuilder } from './regex_parser.js';
 import { NFAView } from './nfa_view.js';
 import { NFAVisualizer, compactSymbolLabel } from './visualizer.js';
@@ -555,7 +554,13 @@ class App {
       }
 
       // Precompute views for all pipeline steps
-      this.pipelineViews = this.buildPipeline(nfa, PIPELINES.NFA);
+      // Base state prefix is set by the caller.
+      const baseLayoutState = this.visualizer.createLayoutState();
+      const baseView = NFAView.fromNFA(nfa, {
+        layoutState: baseLayoutState,
+        stateIdPrefix: 'q',
+      });
+      this.pipelineViews = this.buildPipeline(baseView, PIPELINES.NFA);
       this.dfaCache = new Map();
 
       // Update UI
@@ -706,14 +711,13 @@ class App {
    * @param {string[]} stages - Array of stage IDs
    * @returns {NFAView[]} Array of views corresponding to the stages
    */
-  buildPipeline(nfa, stages) {
+  buildPipeline(view, stages) {
     const views = [];
 
-    // One opaque layout state shared by all views in this pipeline.
-    const layoutState = this.visualizer?.createLayoutState?.() || null;
-
-    // Start from a base view (identity transform).
-    let view = NFAView.fromNFA(nfa, { layoutState });
+    // Ensure we have one opaque layout state shared by all views in this pipeline.
+    if (!view.layoutState) {
+      view.layoutState = this.visualizer.createLayoutState();
+    }
 
     for (const stage of stages) {
       switch (stage) {
@@ -726,7 +730,7 @@ class App {
           break;
 
         case STAGES.EXPAND:
-          // Base view for DFA pipeline (DFA is already built externally)
+          // Base view for DFA pipeline (subset expansion)
           break;
 
         case STAGES.PRUNE:
@@ -764,11 +768,13 @@ class App {
       const sourceViewStep = nfaStep === 0 ? 1 : nfaStep;
       const sourceView = this.pipelineViews[sourceViewStep];
 
-      const dfa = DFABuilder.build(sourceView);
+      // Subset expansion is handled by the view.
+      const expandedView = sourceView.withSubsetExpansion();
 
       // Precompute DFA pipeline views using the generic builder
       const pipeline = this.getDfaPipelineAtNfaStep(nfaStep);
-      const dfaViews = this.buildPipeline(dfa, pipeline);
+
+      const dfaViews = this.buildPipeline(expandedView, pipeline);
       this.dfaCache.set(nfaStep, dfaViews);
     }
 
