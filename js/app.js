@@ -870,8 +870,8 @@ class App {
       if (!this.view.isCanonical(state.id)) continue;
 
       const sources = this.view.mergedSources.get(state.id) || [state.id];
-      const resolvedSources = this.view.getResolvedSources(state.id);
-      const item = this.createStateItem(state, sources, resolvedSources);
+      const displayStrings = this.view.getDisplayStrings(state.id);
+      const item = this.createStateItem(state, sources, displayStrings);
       this.elements.stateList.appendChild(item);
     }
   }
@@ -880,9 +880,9 @@ class App {
    * Create a state item DOM element
    * @param {Object} state - The state object
    * @param {Array<number>} sources - Array of source state IDs for this (possibly merged) state
-   * @param {Array<{id: number, label: string}>} resolvedSources - Array of resolved source states for this (possibly merged) state
+  * @param {string | string[]} displayStrings - Display-ready label string or list of strings
    */
-  createStateItem(state, sources, resolvedSources) {
+  createStateItem(state, sources, displayStrings) {
     const item = document.createElement('div');
     item.className = 'state-item';
     item.dataset.stateId = state.id;
@@ -901,35 +901,24 @@ class App {
     let stateName = `${prefix}${state.id}${suffix}`;
     idSpan.textContent = stateName;
 
-    const nfa = this.view.nfa;
-
-    // For merged states, show all source states with their labels on separate lines
-    if (isMerged || nfa.parentNfa) {
+    // If resolved sources is a list, show each item on its own line.
+    if (Array.isArray(displayStrings)) {
       header.appendChild(idSpan);
       header.appendChild(document.createTextNode(' = '));
 
       const sourcesList = document.createElement('div');
       sourcesList.className = 'state-sources-list';
-      const prefix = this.view.getSourceStateIdPrefix();
-      for (const { id, label } of resolvedSources) {
+      for (const line of displayStrings) {
         const sourceDiv = document.createElement('div');
         sourceDiv.className = 'state-source-item';
-        sourceDiv.textContent = label ? `${prefix}${id}: ${label}` : `${prefix}${id}`;
+        sourceDiv.textContent = line;
         sourcesList.appendChild(sourceDiv);
       }
       header.appendChild(sourcesList);
     } else {
       const labelSpan = document.createElement('span');
       labelSpan.className = 'state-label';
-      // Use the NFA from the current view to get labels
-      // If it's a DFA, the label is the set of NFA states (e.g. "0,1")
-      const labelText = this.view.nfa.stateLabels[state.id];
-
-      if (labelText) {
-        labelSpan.textContent = `${labelText}`;
-      } else {
-        labelSpan.textContent = `${prefix}${state.id}`;
-      }
+      labelSpan.textContent = displayStrings;
 
       header.append(idSpan, ' = ', labelSpan);
     }

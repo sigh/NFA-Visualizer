@@ -357,29 +357,68 @@ export class NFAView {
     return epsilonTargets;
   }
 
-  /**
-   * Get the resolved source states for a given canonical state ID.
-   * If the NFA has a parent NFA (e.g. it's a DFA created from an NFA),
-   * this resolves the sources back to the parent NFA's state IDs.
-   *
-   * @param {number} stateId - The canonical state ID in this view
-   * @returns {Array<{id: number, label: string}>} List of source states with their IDs and labels
-   */
-  getResolvedSources(stateId) {
-    let sources = this.mergedSources.get(stateId) || [];
+  _isDerived() {
+    return this.getSourceStateIdPrefix() !== this.getStateIdPrefix();
+  }
 
-    if (this.nfa.parentNfa) {
-      const baseIds = new Set();
-      for (const sourceId of sources) {
-        const label = this.nfa.stateLabels[sourceId] || '';
-        for (const id of label.split(',').map(s => parseInt(s, 10))) {
-          baseIds.add(id);
-        }
-      }
-      sources = [...baseIds].sort((a, b) => a - b);
+  /**
+   * @param {number} stateId
+   * @returns {number|number[]}
+   */
+  getResolvedSourceIds(stateId) {
+    const sources = this.mergedSources.get(stateId) || [];
+
+    const isDerived = this._isDerived();
+
+    // List-ness decision lives here.
+    if (sources.length == 1 && !isDerived) {
+      return sources[0];
     }
 
-    const baseNfa = this.nfa.parentNfa || this.nfa;
-    return sources.map(id => ({ id, label: baseNfa.stateLabels[id] || '' }));
+    // Merged states already have source IDs.
+    if (!isDerived) {
+      return [...sources].sort((a, b) => a - b);
+    }
+
+    // Derived DFA states: decode labels like "0,2" back to source IDs.
+    const baseIds = new Set();
+    for (const dfaStateId of sources) {
+      const label = this.nfa.stateLabels[dfaStateId] || '';
+      const parts = label.split(',').map(s => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        if (!/^\d+$/.test(part)) continue;
+        baseIds.add(Number(part));
+      }
+    }
+
+    return [...baseIds].sort((a, b) => a - b);
+  }
+
+  /**
+   * Return display-ready strings for resolved sources.
+   *
+   * @param {number} stateId - The canonical state ID in this view
+   * @returns {string | string[]}
+   */
+  getDisplayStrings(stateId) {
+    const sourceNfa = this._sourceView?.nfa ?? this.nfa;
+    const sourcePrefix = this.getSourceStateIdPrefix() ?? '';
+    const sourceIds = this.getResolvedSourceIds(stateId);
+
+    if (!Array.isArray(sourceIds)) {
+      const label = this.nfa.stateLabels[stateId] || '';
+      return label || `${sourcePrefix}${stateId}`;
+    }
+
+    // If decoding failed for a derived DFA state, still return a list.
+    if (this._isDerived() && sourceIds.length === 0) {
+      const raw = this.nfa.stateLabels[stateId] || `${sourcePrefix}${stateId}`;
+      return [raw];
+    }
+
+    return sourceIds.map((id) => {
+      const label = sourceNfa.stateLabels[id] || '';
+      return label ? `${sourcePrefix}${id}: ${label}` : `${sourcePrefix}${id}`;
+    });
   }
 }

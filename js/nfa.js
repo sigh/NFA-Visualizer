@@ -155,8 +155,6 @@ export class NFA {
     this.stateLabels = [];
     /** @type {Map<number, Set<number>>} Epsilon transitions: fromState -> Set<toState> */
     this.epsilonTransitions = new Map();
-    /** @type {NFA|null} Parent view if this NFA is derived from another */
-    this.parentNfa = null;
 
     /** @type {StateTransformation|null} Cached dead states transformation */
     this._deadStatesCache = null;
@@ -185,7 +183,6 @@ export class NFA {
       cloned.epsilonTransitions.set(fromId, new Set(targets));
     }
 
-    cloned.parentNfa = this.parentNfa;
     return cloned;
   }
 

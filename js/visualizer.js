@@ -658,14 +658,11 @@ export class NFAVisualizer {
    * @returns {string}
    */
   getFullStateLabel(stateId) {
-    // List each source on its own line
-    const resolvedSources = this.view.getResolvedSources(stateId);
-    const prefix = this.view.getSourceStateIdPrefix();
-    // Note, all these states are resolved, so use the base prefixes.
-    const sourceLines = resolvedSources.map(({ id, label }) => {
-      return label ? `${prefix}${id}: ${label}` : `${prefix}${id}`;
-    });
-    return sourceLines.join('\n');
+    const displayStrings = this.view.getDisplayStrings(stateId);
+    if (Array.isArray(displayStrings)) {
+      return displayStrings.join('\n');
+    }
+    return displayStrings;
   }
 
   /**

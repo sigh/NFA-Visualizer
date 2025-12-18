@@ -402,18 +402,20 @@ describe('NFAView', () => {
     });
   });
 
-  describe('getResolvedSources', () => {
-    test('returns sources for simple identity transform', () => {
+  describe('getResolvedSourceIds() / getDisplayStrings()', () => {
+    test('returns raw label for simple identity transform', () => {
       const nfa = createTestNFA();
       nfa.addState(); // q0
       nfa.stateLabels[0] = 'q0';
       const transform = StateTransformation.identity(1);
-      const view = new NFAView(nfa, { transform });
+      const view = new NFAView(nfa, { transform, stateIdPrefix: 'q' });
 
-      const sources = view.getResolvedSources(0);
-      assert.strictEqual(sources.length, 1);
-      assert.strictEqual(sources[0].id, 0);
-      assert.strictEqual(sources[0].label, 'q0');
+      const sourceIds = view.getResolvedSourceIds(0);
+      assert.strictEqual(sourceIds, 0);
+
+      const display = view.getDisplayStrings(0);
+      assert.strictEqual(typeof display, 'string');
+      assert.strictEqual(display, 'q0');
     });
 
     test('returns multiple sources for merged states', () => {
@@ -425,39 +427,41 @@ describe('NFAView', () => {
 
       // Map both to 0
       const transform = new StateTransformation([0, 0]);
-      const view = new NFAView(nfa, { transform });
+      const view = new NFAView(nfa, { transform, stateIdPrefix: 'q' });
 
-      const sources = view.getResolvedSources(0);
-      assert.strictEqual(sources.length, 2);
-      // Order depends on implementation, but usually insertion order or sorted
-      const ids = sources.map(s => s.id).sort();
-      assert.deepStrictEqual(ids, [0, 1]);
+      const sourceIds = view.getResolvedSourceIds(0);
+      assert(Array.isArray(sourceIds));
+      assert.deepStrictEqual(sourceIds, [0, 1]);
+
+      const display = view.getDisplayStrings(0);
+      assert(Array.isArray(display));
+      assert.deepStrictEqual(display, ['q0: q0', 'q1: q1']);
     });
 
-    test('resolves sources through parentNfa', () => {
+    test('resolves sources through sourceView when prefixes differ', () => {
       const baseNfa = createTestNFA();
       baseNfa.addState(); // 0
       baseNfa.addState(); // 1
       baseNfa.addState(); // 2
       baseNfa.stateLabels = ['A', 'B', 'C'];
 
+      const baseView = NFAView.fromNFA(baseNfa, { stateIdPrefix: 'q' });
+
       const derivedNfa = createTestNFA();
       derivedNfa.addState(); // 0
-      derivedNfa.parentNfa = baseNfa;
       // State 0 in derived NFA represents {0, 2} from base NFA
       derivedNfa.stateLabels[0] = '0,2';
 
       const transform = StateTransformation.identity(1);
-      const view = new NFAView(derivedNfa, { transform });
+      const view = new NFAView(derivedNfa, { transform, sourceView: baseView, stateIdPrefix: "q'" });
 
-      const sources = view.getResolvedSources(0);
-      assert.strictEqual(sources.length, 2);
+      const sourceIds = view.getResolvedSourceIds(0);
+      assert(Array.isArray(sourceIds));
+      assert.deepStrictEqual(sourceIds, [0, 2]);
 
-      assert.strictEqual(sources[0].id, 0);
-      assert.strictEqual(sources[0].label, 'A');
-
-      assert.strictEqual(sources[1].id, 2);
-      assert.strictEqual(sources[1].label, 'C');
+      const display = view.getDisplayStrings(0);
+      assert(Array.isArray(display));
+      assert.deepStrictEqual(display, ['q0: A', 'q2: C']);
     });
   });
 });

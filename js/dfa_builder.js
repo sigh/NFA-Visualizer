@@ -75,8 +75,6 @@ export class DFABuilder {
       }
     }
 
-    dfa.parentNfa = view.nfa;
-
     return dfa;
   }
 
