@@ -101,7 +101,7 @@ export class NFAView {
    * @returns {NFAView}
    */
   withDeadStatesPruned() {
-    const deadTransform = this.nfa.getDeadStates();
+    const deadTransform = this._deadStates;
     if (deadTransform.isIdentity()) return this;
 
     const nextTransform = this.transform.compose(deadTransform);
@@ -144,6 +144,7 @@ export class NFAView {
     }
 
     const dfa = DFABuilder.build(this);
+    console.log('DFA built with', dfa.numStates(), 'states.');
     const rawView = this._sourceView;
 
     return NFAView.fromNFA(dfa, {
@@ -322,14 +323,13 @@ export class NFAView {
    */
   getStateInfo() {
     const nfa = this.nfa;
-    const deadTransform = nfa.getDeadStates();
 
     return Array.from({ length: nfa.numStates() }, (_, id) => {
       return {
         id,
         isStart: this.isStart(id),
         isAccept: this.isAccepting(id),
-        isDead: deadTransform.isDeleted(id),
+        isDead: this._deadStates.isDeleted(id),
       };
     });
   }
@@ -420,5 +420,9 @@ export class NFAView {
       const label = sourceNfa.stateLabels[id] || '';
       return label ? `${sourcePrefix}${id}: ${label}` : `${sourcePrefix}${id}`;
     });
+  }
+
+  getDeadStates() {
+    return this._deadStates;
   }
 }

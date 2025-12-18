@@ -1008,7 +1008,7 @@ class App {
         const isMerged = this.view.isMergedState(canonical);
         const suffix = isMerged ? "'" : "";
         const toStateName = `${prefix}${canonical}${suffix}`;
-        transitionsEl.appendChild(this.createTransitionRow(toStateName, [...symbolSet], isMerged));
+        transitionsEl.appendChild(this.createTransitionRow(toStateName, [...symbolSet]));
       }
 
       // Epsilon transitions
@@ -1016,7 +1016,7 @@ class App {
         const isMerged = this.view.isMergedState(canonical);
         const suffix = isMerged ? "'" : "";
         const toStateName = `${prefix}${canonical}${suffix}`;
-        transitionsEl.appendChild(this.createTransitionRow(toStateName, ['ε'], isMerged));
+        transitionsEl.appendChild(this.createTransitionRow(toStateName, ['ε']));
       }
     }
     transitionsEl.classList.remove('hidden');
@@ -1026,9 +1026,8 @@ class App {
    * Create a transition row DOM element
    * @param {string} toStateName - Target state name
    * @param {string[]} symbols - Transition symbols
-   * @param {boolean} isMerged - Whether target state is a merged state
    */
-  createTransitionRow(toStateName, symbols, isMerged = false) {
+  createTransitionRow(toStateName, symbols) {
     const row = document.createElement('div');
     row.className = 'transition-row';
 
@@ -1187,7 +1186,7 @@ class App {
       this.showTestResult(`✓ Accepted`, true);
     } else {
       // Dead end if all remaining states are dead
-      const deadTransform = this.view.nfa.getDeadStates();
+      const deadTransform = this.view.getDeadStates();
       const allDead = lastStep.states.every(id => deadTransform.isDeleted(id));
       const reason = allDead ? 'Dead End' : 'Rejected';
       this.showTestResult(`✗ ${reason}`, false);
