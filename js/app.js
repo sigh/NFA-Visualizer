@@ -1104,7 +1104,7 @@ class App {
       const invalidSymbols = new Set();
       for (const step of sequence) {
         for (const symbol of step) {
-          if (!nfa.hasSymbol(symbol)) {
+          if (nfa.getSymbolIndex(symbol) === undefined) {
             invalidSymbols.add(symbol);
           }
         }

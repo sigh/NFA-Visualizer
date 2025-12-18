@@ -451,6 +451,7 @@ describe('NFAView', () => {
       derivedNfa.addState(); // 0
       // State 0 in derived NFA represents {0, 2} from base NFA
       derivedNfa.stateLabels[0] = '0,2';
+      derivedNfa.dfaStateSources = [[0, 2]];
 
       const transform = StateTransformation.identity(1);
       const view = new NFAView(derivedNfa, { transform, sourceView: baseView, stateIdPrefix: "q'" });

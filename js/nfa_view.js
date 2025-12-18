@@ -405,12 +405,17 @@ export class NFAView {
 
     // Derived DFA states: decode labels like "0,2" back to source IDs.
     const baseIds = new Set();
+
+    const dfaStateSources = this.nfa.dfaStateSources;
+    if (!Array.isArray(dfaStateSources)) {
+      throw new Error('Derived DFA view is missing dfaStateSources; ensure DFABuilder.build() produced this NFA.');
+    }
+
     for (const dfaStateId of sources) {
-      const label = this.nfa.stateLabels[dfaStateId] || '';
-      const parts = label.split(',').map(s => s.trim()).filter(Boolean);
-      for (const part of parts) {
-        if (!/^\d+$/.test(part)) continue;
-        baseIds.add(Number(part));
+      const ids = dfaStateSources[dfaStateId];
+      if (!ids) continue;
+      for (const id of ids) {
+        baseIds.add(id);
       }
     }
 

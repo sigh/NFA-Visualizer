@@ -10,7 +10,7 @@ export class DFABuilder {
    *
    * @param {NFAView} view - The source NFA view. Must provide effective transitions (e.g. epsilon closure applied).
    * @param {{ maxStates?: number }} [options]
-   * @returns {NFA} The resulting DFA
+   * @returns {NFA} The resulting DFA. Includes `dfa.dfaStateSources[stateId] = number[]`.
    */
   static build(view, options = {}) {
     const maxStates = options.maxStates ?? 1000;
@@ -21,6 +21,8 @@ export class DFABuilder {
     }
 
     const dfa = new NFA(view.nfa.symbols);
+    // dfaStateId -> sorted list of source state ids in the input view.
+    const dfaStateSources = [];
 
     // 1. Identify Start States
     const startStates = DFABuilder._getStartStates(view);
@@ -33,16 +35,18 @@ export class DFABuilder {
     const worklist = [];
     let worklistHead = 0;
 
-    const startKey = DFABuilder._getStateKey(startStates);
+    const startStatesSorted = [...startStates].sort((a, b) => a - b);
+    const startKey = DFABuilder._getStateKey(startStatesSorted);
     const startId = dfa.addState(startKey);
     dfa.addStart(startId);
+    dfaStateSources[startId] = startStatesSorted;
 
     if (DFABuilder._isAcceptingSet(view, startStates)) {
       dfa.addAccept(startId);
     }
 
     dfaStateMap.set(startKey, startId);
-    worklist.push(startStates);
+    worklist.push(startStatesSorted);
 
     // 3. Process Worklist
     while (worklistHead < worklist.length) {
@@ -58,7 +62,7 @@ export class DFABuilder {
         const nextSet = transitionsBySymbol.get(symbol);
 
         if (nextSet && nextSet.size > 0) {
-          const nextSetArray = [...nextSet];
+          const nextSetArray = [...nextSet].sort((a, b) => a - b);
           const nextKey = DFABuilder._getStateKey(nextSetArray);
 
           let nextId;
@@ -69,6 +73,7 @@ export class DFABuilder {
               throw new Error(`DFABuilder: Aborting subset construction; exceeded maxStates=${maxStates}.`);
             }
             nextId = dfa.addState(nextKey);
+            dfaStateSources[nextId] = nextSetArray;
             if (DFABuilder._isAcceptingSet(view, nextSetArray)) {
               dfa.addAccept(nextId);
             }
@@ -81,6 +86,7 @@ export class DFABuilder {
       }
     }
 
+    dfa.dfaStateSources = dfaStateSources;
     return dfa;
   }
 

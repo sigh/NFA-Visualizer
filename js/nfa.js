@@ -228,15 +228,6 @@ export class NFA {
   }
 
   /**
-   * Check if a symbol is in the NFA's alphabet
-   * @param {string} symbol
-   * @returns {boolean}
-   */
-  hasSymbol(symbol) {
-    return this._symbolToIndex.has(symbol);
-  }
-
-  /**
    * Get the symbol index for a symbol in this NFA's alphabet.
    * @param {string} symbol
    * @returns {number|undefined}
