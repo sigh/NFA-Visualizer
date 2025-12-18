@@ -9,9 +9,12 @@ export class DFABuilder {
    * Uses the standard subset construction algorithm.
    *
    * @param {NFAView} view - The source NFA view. Must provide effective transitions (e.g. epsilon closure applied).
+   * @param {{ maxStates?: number }} [options]
    * @returns {NFA} The resulting DFA
    */
-  static build(view) {
+  static build(view, options = {}) {
+    const maxStates = options.maxStates ?? 1000;
+
     // Ensure we are working with a view that exposes effective transitions
     if (view.nfa.epsilonTransitions.size > 0) {
       throw new Error('DFABuilder: Cannot build from a view with explicit epsilon transitions.');
@@ -62,6 +65,9 @@ export class DFABuilder {
           if (dfaStateMap.has(nextKey)) {
             nextId = dfaStateMap.get(nextKey);
           } else {
+            if (dfa.numStates() >= maxStates) {
+              throw new Error(`DFABuilder: Aborting subset construction; exceeded maxStates=${maxStates}.`);
+            }
             nextId = dfa.addState(nextKey);
             if (DFABuilder._isAcceptingSet(view, nextSetArray)) {
               dfa.addAccept(nextId);

@@ -316,6 +316,73 @@ export class NFAVisualizer {
     this.view = null;
   }
 
+  shouldSkipDagreLayout(nodeCount, edgeCount) {
+    // Dagre can get very slow on larger graphs; fall back to a cheap preset.
+    return nodeCount > 120 || edgeCount > 300;
+  }
+
+  computeGridPresetPositionsForNodeIds(nodeIds) {
+    const nodes = [...nodeIds].sort((a, b) => {
+      const na = parseInt(String(a).slice(1), 10);
+      const nb = parseInt(String(b).slice(1), 10);
+      if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+      return String(a).localeCompare(String(b));
+    });
+
+    const n = nodes.length;
+    const positions = new Map();
+    if (n === 0) return positions;
+
+    const cols = Math.ceil(Math.sqrt(n));
+    const spacingX = 140;
+    const spacingY = 110;
+    const x0 = -((cols - 1) * spacingX) / 2;
+
+    for (let i = 0; i < n; i++) {
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+      const id = nodes[i];
+      positions.set(id, { x: x0 + col * spacingX, y: row * spacingY });
+    }
+
+    return positions;
+  }
+
+  computeGridPresetPositions(elements) {
+    const nodeIds = elements
+      .filter(el => el && el.data && el.data.id && !el.data.source)
+      .map(el => el.data.id);
+    return this.computeGridPresetPositionsForNodeIds(nodeIds);
+  }
+
+  getLayoutPlan({ state, nodeIds, nodeCount, edgeCount }) {
+    const hasStoredPreset = !!(state && state.positions && state.positions.size > 0);
+
+    if (hasStoredPreset) {
+      return {
+        layoutOptions: this.getPresetLayoutOptions(state.positions),
+        usesPreset: true,
+        usesStoredPreset: true
+      };
+    }
+
+    if (this.shouldSkipDagreLayout(nodeCount, edgeCount)) {
+      const positions = this.computeGridPresetPositionsForNodeIds(nodeIds);
+      if (state) state.positions = positions;
+      return {
+        layoutOptions: this.getPresetLayoutOptions(positions),
+        usesPreset: true,
+        usesStoredPreset: false
+      };
+    }
+
+    return {
+      layoutOptions: this.getLayoutOptions(),
+      usesPreset: false,
+      usesStoredPreset: false
+    };
+  }
+
   /**
    * Create a new opaque layout state object.
    * Callers must treat the returned object as opaque.
@@ -368,11 +435,20 @@ export class NFAVisualizer {
     // Create tooltip element if it doesn't exist
     this.ensureTooltip();
 
-    // Determine layout: use preset positions if provided, otherwise dagre
-    const hasPreset = !!(state && state.positions && state.positions.size > 0);
-    const layoutOptions = hasPreset
-      ? this.getPresetLayoutOptions(state.positions)
-      : this.getLayoutOptions();
+    const nodeCount = elements.filter(el => el && el.data && el.data.id && !el.data.source).length;
+    const edgeCount = elements.length - nodeCount;
+
+    // Determine layout: use stored preset positions if provided, otherwise dagre
+    // unless the graph is large (fallback to a cheap computed preset).
+    const nodeIds = elements
+      .filter(el => el && el.data && el.data.id && !el.data.source)
+      .map(el => el.data.id);
+    const { layoutOptions, usesStoredPreset } = this.getLayoutPlan({
+      state,
+      nodeIds,
+      nodeCount,
+      edgeCount
+    });
 
     // Create new Cytoscape instance
     this.cy = cytoscape({
@@ -387,13 +463,13 @@ export class NFAVisualizer {
     // Setup tooltip events
     this.setupTooltipEvents();
 
-    // Restore viewport if present; otherwise fit if we didn't use preset positions.
+    // Restore viewport if present; otherwise fit (we don't have a persisted viewport yet).
     if (state && state.viewport) {
       this.cy.viewport({
         zoom: state.viewport.zoom,
         pan: state.viewport.pan
       });
-    } else if (!hasPreset) {
+    } else if (!usesStoredPreset) {
       this.cy.fit(50);
     }
 
@@ -522,8 +598,6 @@ export class NFAVisualizer {
         classes.push('combined');
       }
 
-      const sources = view.mergedSources.get(state.id) || [state.id];
-
       elements.push({
         data: {
           id: `s${state.id}`,
@@ -594,7 +668,18 @@ export class NFAVisualizer {
   runLayout(animate = false) {
     if (!this.cy) return;
 
-    const layoutOptions = this.getLayoutOptions();
+    const state = (this.view && this.view.layoutState) ? this.view.layoutState : null;
+    const nodeCount = this.cy.nodes().length;
+    const edgeCount = this.cy.edges().length;
+
+    const nodeIds = this.cy.nodes().map(n => n.id());
+    const { layoutOptions } = this.getLayoutPlan({
+      state,
+      nodeIds,
+      nodeCount,
+      edgeCount
+    });
+
     layoutOptions.animate = animate;
     if (animate) {
       layoutOptions.animationDuration = 500;

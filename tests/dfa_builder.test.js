@@ -96,4 +96,27 @@ describe('DFABuilder', () => {
     assert.strictEqual(dfa.run([['a']]).accepted, true);
     assert.strictEqual(dfa.run([]).accepted, false);
   });
+
+  it('aborts subset construction when maxStates is exceeded', () => {
+    // NFA: start 0, on 'a' -> {0,1}. This yields at least two reachable DFA states: {0} and {0,1}.
+    const builder = new NFABuilder({
+      startState: 0,
+      transition: (s, sym) => {
+        if (sym !== 'a') return undefined;
+        if (s === 0) return [0, 1];
+        if (s === 1) return 1;
+      },
+      accept: () => false
+    }, { ...CONFIG, symbols: ['a'] });
+
+    const nfa = builder.build();
+    const view = new NFAView(nfa, {
+      transform: StateTransformation.identity(nfa.numStates())
+    });
+
+    assert.throws(
+      () => DFABuilder.build(view, { maxStates: 1 }),
+      /exceeded maxStates=1/
+    );
+  });
 });

@@ -801,25 +801,34 @@ class App {
   updateTransformAndRender() {
     const previousView = this.view;
 
-    const views = this.getActivePipelineViews();
+    // Clear any previous pipeline/render errors.
+    this.hideError();
 
-    const slider = this.activePipeline === PIPELINE_MODES.DFA
-      ? this.elements.dfaSlider
-      : this.elements.nfaSlider;
-    this.view = views[parseInt(slider.value)];
+    try {
+      const views = this.getActivePipelineViews();
 
-    // Capture the previous layout into its (opaque) layout state.
-    if (previousView?.layoutState) {
-      this.visualizer.captureLayout(previousView.layoutState);
+      const slider = this.activePipeline === PIPELINE_MODES.DFA
+        ? this.elements.dfaSlider
+        : this.elements.nfaSlider;
+      this.view = views[parseInt(slider.value)];
+
+      // Capture the previous layout into its (opaque) layout state.
+      if (previousView?.layoutState) {
+        this.visualizer.captureLayout(previousView.layoutState);
+      }
+
+      // Re-render
+      this.visualizer.render(this.view, this.view.layoutState);
+
+      // Update stats display
+      this.updateStatsDisplay(this.view, views[views.length - 1]);
+      this.updateStateList();
+      this.updateTestResult();
+    } catch (e) {
+      // Keep the previous rendering intact; just surface the error.
+      this.view = previousView;
+      this.showError(e?.message ?? String(e));
     }
-
-    // Re-render
-    this.visualizer.render(this.view, this.view.layoutState);
-
-    // Update stats display
-    this.updateStatsDisplay(this.view, views[views.length - 1]);
-    this.updateStateList();
-    this.updateTestResult();
   }
 
   /**
