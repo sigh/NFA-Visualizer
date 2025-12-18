@@ -894,12 +894,7 @@ class App {
     const idSpan = document.createElement('span');
     idSpan.className = 'state-id';
 
-    const isMerged = sources.length > 1;
-    const prefix = this.view.getStateIdPrefix();
-    const suffix = isMerged ? "'" : "";
-
-    let stateName = `${prefix}${state.id}${suffix}`;
-    idSpan.textContent = stateName;
+    idSpan.textContent = this.view.getStateIdString(state.id);
 
     // If resolved sources is a list, show each item on its own line.
     if (Array.isArray(displayStrings)) {
@@ -996,7 +991,6 @@ class App {
     // Epsilon transitions (if any)
     const epsilonTargets = this.view.getEpsilonTransitionsFrom(stateId);
 
-    const prefix = this.view.getStateIdPrefix();
     if (byCanonicalTarget.size === 0 && epsilonTargets.size === 0) {
       const row = document.createElement('div');
       row.className = 'transition-row';
@@ -1005,17 +999,13 @@ class App {
     } else {
       // Regular transitions
       for (const [canonical, symbolSet] of byCanonicalTarget) {
-        const isMerged = this.view.isMergedState(canonical);
-        const suffix = isMerged ? "'" : "";
-        const toStateName = `${prefix}${canonical}${suffix}`;
+        const toStateName = this.view.getStateIdString(canonical);
         transitionsEl.appendChild(this.createTransitionRow(toStateName, [...symbolSet]));
       }
 
       // Epsilon transitions
       for (const canonical of epsilonTargets) {
-        const isMerged = this.view.isMergedState(canonical);
-        const suffix = isMerged ? "'" : "";
-        const toStateName = `${prefix}${canonical}${suffix}`;
+        const toStateName = this.view.getStateIdString(canonical);
         transitionsEl.appendChild(this.createTransitionRow(toStateName, ['ε']));
       }
     }

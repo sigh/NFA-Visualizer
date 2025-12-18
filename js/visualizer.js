@@ -527,7 +527,7 @@ export class NFAVisualizer {
       elements.push({
         data: {
           id: `s${state.id}`,
-          label: this.getStateLabel(state.id, sources),
+          label: this.view.getStateIdString(state.id),
           fullLabel: this.getFullStateLabel(state.id)
         },
         classes: classes.join(' ')
@@ -633,23 +633,6 @@ export class NFAVisualizer {
       },
       padding: 30
     };
-  }
-
-  /**
-   * Get display label for a state
-   * @param {number} stateId
-   * @param {number[]} sources - Source state IDs for this node
-   * @returns {string}
-   */
-  getStateLabel(stateId, sources) {
-    const prefix = this.view.getStateIdPrefix();
-
-    // If this node absorbed other states, show with prime notation
-    if (sources.length > 1) {
-      return `${prefix}${stateId}'`;
-    }
-
-    return `${prefix}${stateId}`;
   }
 
   /**

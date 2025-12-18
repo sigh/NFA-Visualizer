@@ -435,7 +435,7 @@ describe('NFAView', () => {
 
       const display = view.getDisplayStrings(0);
       assert(Array.isArray(display));
-      assert.deepStrictEqual(display, ['q0: q0', 'q1: q1']);
+      assert.deepStrictEqual(display, ["q0': q0", 'q1: q1']);
     });
 
     test('resolves sources through sourceView when prefixes differ', () => {

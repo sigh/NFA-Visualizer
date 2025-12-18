@@ -144,7 +144,6 @@ export class NFAView {
     }
 
     const dfa = DFABuilder.build(this);
-    console.log('DFA built with', dfa.numStates(), 'states.');
     const rawView = this._sourceView;
 
     return NFAView.fromNFA(dfa, {
@@ -161,6 +160,30 @@ export class NFAView {
 
   getSourceStateIdPrefix() {
     return this._sourceView._stateIdPrefix;
+  }
+
+  /**
+   * Get the display string for a state ID in this view.
+   *
+   * @param {number} stateId
+   * @returns {string}
+   */
+  getStateIdString(stateId) {
+    const prefix = this.getStateIdPrefix() ?? '';
+    const suffix = this.isMergedState(stateId) ? "'" : '';
+    return `${prefix}${stateId}${suffix}`;
+  }
+
+  /**
+   * Get the display string for a state ID in this view, without merge suffix.
+   * Used for listing source states (sources should not be shown as primed/combined).
+   *
+   * @param {number} stateId
+   * @returns {string}
+   */
+  getStateIdStringNoMerge(stateId) {
+    const prefix = this.getStateIdPrefix() ?? '';
+    return `${prefix}${stateId}`;
   }
 
   /**
@@ -401,24 +424,19 @@ export class NFAView {
    * @returns {string | string[]}
    */
   getDisplayStrings(stateId) {
-    const sourceNfa = this._sourceView?.nfa ?? this.nfa;
-    const sourcePrefix = this.getSourceStateIdPrefix() ?? '';
+    const sourceView = this._sourceView ?? this;
+    const sourceNfa = sourceView.nfa;
     const sourceIds = this.getResolvedSourceIds(stateId);
 
     if (!Array.isArray(sourceIds)) {
       const label = this.nfa.stateLabels[stateId] || '';
-      return label || `${sourcePrefix}${stateId}`;
-    }
-
-    // If decoding failed for a derived DFA state, still return a list.
-    if (this._isDerived() && sourceIds.length === 0) {
-      const raw = this.nfa.stateLabels[stateId] || `${sourcePrefix}${stateId}`;
-      return [raw];
+      return label || this.getStateIdString(stateId);
     }
 
     return sourceIds.map((id) => {
       const label = sourceNfa.stateLabels[id] || '';
-      return label ? `${sourcePrefix}${id}: ${label}` : `${sourcePrefix}${id}`;
+      const stateIdString = sourceView.getStateIdString(id);
+      return label ? `${stateIdString}: ${label}` : stateIdString;
     });
   }
 
