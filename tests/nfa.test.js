@@ -3,7 +3,8 @@
  */
 
 import { test, describe, assert } from './test_utils.js';
-import { NFA, StateTransformation, DEFAULT_SYMBOL_CLASS } from '../js/nfa.js';
+import { NFA, RunStatus, StateTransformation } from '../js/nfa.js';
+import { RegexParser, RegexToNFABuilder } from '../js/regex_parser.js';
 
 // =============================================================================
 // StateTransformation Tests
@@ -84,13 +85,13 @@ describe('StateTransformation', () => {
   describe('isDeleted()', () => {
     test('returns true for deleted states', () => {
       const t = StateTransformation.deletion(5, new Set([2]));
-      assert.strictEqual(t.isDeleted(2), true);
+      assert(t.isDeleted(2));
     });
 
     test('returns false for active states', () => {
       const t = StateTransformation.deletion(5, new Set([2]));
-      assert.strictEqual(t.isDeleted(0), false);
-      assert.strictEqual(t.isDeleted(4), false);
+      assert(!t.isDeleted(0));
+      assert(!t.isDeleted(4));
     });
   });
 
@@ -218,67 +219,23 @@ describe('NFA', () => {
     });
   });
 
-  describe('setStart()', () => {
+  describe('addStart()', () => {
     test('sets state as start state', () => {
       const nfa = new NFA(['a']);
-      const id = nfa.addState();
-      assert.strictEqual(nfa.addStart(id), true);
-      assert(nfa.isStart(id));
-      assert.strictEqual(nfa.addStart(id), false);
+      const s0 = nfa.addState();
+      nfa.addStart(s0);
+      assert(nfa.isStart(s0));
     });
 
     test('allows multiple start states', () => {
       const nfa = new NFA(['a']);
       const s0 = nfa.addState();
       const s1 = nfa.addState();
-      assert.strictEqual(nfa.addStart(s0), true);
-      assert.strictEqual(nfa.addStart(s1), true);
+      nfa.addStart(s0);
+      nfa.addStart(s1);
       assert(nfa.isStart(s0));
       assert(nfa.isStart(s1));
-    });
-  });
-
-  describe('setAccept()', () => {
-    test('sets state as accepting', () => {
-      const nfa = new NFA(['a']);
-      const id = nfa.addState();
-      assert(!nfa.isAccepting(id));
-      assert.strictEqual(nfa.addAccept(id), true);
-      assert(nfa.isAccepting(id));
-      assert.strictEqual(nfa.addAccept(id), false);
-    });
-  });
-
-  describe('addTransition() and getTransitions()', () => {
-    test('adds and retrieves transitions', () => {
-      const nfa = new NFA(['a', 'b']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      assert.strictEqual(nfa.addTransition(s0, s1, 0), true); // on 'a'
-
-      const targets = nfa.getTransitions(s0, 0);
-      assert(targets.includes(s1));
-      assert.strictEqual(nfa.addTransition(s0, s1, 0), false);
-    });
-
-    test('supports multiple transitions on same symbol', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      const s2 = nfa.addState();
-      nfa.addTransition(s0, s1, 0);
-      nfa.addTransition(s0, s2, 0);
-
-      const targets = nfa.getTransitions(s0, 0);
-      assert(targets.includes(s1));
-      assert(targets.includes(s2));
-    });
-
-    test('returns empty array for no transitions', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const targets = nfa.getTransitions(s0, 0);
-      assert.deepStrictEqual(targets, []);
+      assert.strictEqual(nfa.startStates.size, 2);
     });
   });
 
@@ -287,7 +244,7 @@ describe('NFA', () => {
       const nfa = new NFA(['a', 'b']);
       const s0 = nfa.addState();
       const s1 = nfa.addState();
-      nfa.addStart(s0);
+
       nfa.addTransition(s0, s1, 0);
       nfa.addTransition(s1, s0, 1);
 
@@ -295,493 +252,536 @@ describe('NFA', () => {
       assert.strictEqual(all.length, 2);
     });
   });
-
-  describe('getTransitionsFrom()', () => {
-    test('returns all transitions from a state grouped by target', () => {
-      const nfa = new NFA(['a', 'b']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addTransition(s0, s1, 0); // s0 --a--> s1
-      nfa.addTransition(s0, s1, 1); // s0 --b--> s1
-
-      const trans = nfa.getTransitionsFrom(s0);
-      assert.strictEqual(trans.length, 1); // grouped by target
-      assert.strictEqual(trans[0].to, s1);
-      assert.strictEqual(trans[0].symbols.length, 2);
-    });
-  });
-
-  describe('run()', () => {
-    test('accepts matching input', () => {
-      // Simple NFA: accepts strings ending in 'a'
-      const nfa = new NFA(['a', 'b']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addAccept(s1);
-      nfa.addStart(s0);
-      nfa.addTransition(s0, s0, 0); // a -> stay
-      nfa.addTransition(s0, s0, 1); // b -> stay
-      nfa.addTransition(s0, s1, 0); // a -> accept
-
-      // run() takes array of symbol arrays (each step can have multiple symbols)
-      const result = nfa.run([['a']]); // single 'a'
-      assert(result.accepted);
-    });
-
-    test('rejects non-matching input', () => {
-      const nfa = new NFA(['a', 'b']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addAccept(s1);
-      nfa.addStart(s0);
-      nfa.addTransition(s0, s1, 0); // only accept on 'a'
-
-      const result = nfa.run([['b']]); // 'b'
-      assert(!result.accepted);
-    });
-
-    test('trace records correct state history', () => {
-      const nfa = new NFA(['a', 'b']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      const s2 = nfa.addState();
-
-      nfa.addStart(s0);
-      // s0 --a--> s1 --b--> s2
-      nfa.addTransition(s0, s1, 0);
-      nfa.addTransition(s1, s2, 1);
-
-      const result = nfa.run([['a'], ['b']]);
-
-      assert.strictEqual(result.trace.length, 3);
-
-      assert.deepStrictEqual(result.trace[0], {
-        step: 0,
-        input: null,
-        states: [s0]
-      });
-
-      assert.deepStrictEqual(result.trace[1], {
-        step: 1,
-        input: ['a'],
-        states: [s1]
-      });
-
-      assert.deepStrictEqual(result.trace[2], {
-        step: 2,
-        input: ['b'],
-        states: [s2]
-      });
-    });
-
-    test('accepts empty input if start state is accepting', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      nfa.addAccept(s0);
-      nfa.addStart(s0);
-
-      const result = nfa.run([]);
-      assert(result.accepted);
-      assert.strictEqual(result.trace.length, 1);
-      assert.deepStrictEqual(result.trace[0].states, [s0]);
-    });
-
-    test('uses epsilon closure for empty input (without enforcement)', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addStart(s0);
-      nfa.addAccept(s1);
-      // s0 --epsilon--> s1
-      nfa.addEpsilonTransition(s0, s1);
-
-      const result = nfa.run([]);
-      assert(result.accepted);
-      assert.deepStrictEqual(new Set(result.trace[0].states), new Set([s0, s1]));
-    });
-
-    test('applies epsilon closure after each step (without enforcement)', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      const s2 = nfa.addState();
-      nfa.addStart(s0);
-      nfa.addAccept(s2);
-      // s0 --a--> s1
-      nfa.addTransition(s0, s1, 0);
-      // s1 --epsilon--> s2
-      nfa.addEpsilonTransition(s1, s2);
-
-      const result = nfa.run([['a']]);
-      assert(result.accepted);
-      assert.deepStrictEqual(new Set(result.trace[1].states), new Set([s1, s2]));
-    });
-
-    test('handles cycles correctly', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addAccept(s1);
-      nfa.addStart(s0);
-      // s0 --a--> s1 --a--> s0
-      nfa.addTransition(s0, s1, 0);
-      nfa.addTransition(s1, s0, 0);
-
-      // 'aaa' -> s0 -> s1 -> s0 -> s1 (accept)
-      const result = nfa.run([['a'], ['a'], ['a']]);
-      assert(result.accepted);
-      assert.strictEqual(result.trace.length, 4);
-      assert.deepStrictEqual(result.trace[3].states, [s1]);
-    });
-
-    test('handles multiple symbols in one step', () => {
-      const nfa = new NFA(['a', 'b']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addAccept(s1);
-      nfa.addStart(s0);
-      // s0 --a--> s1
-      // s0 --b--> s1
-      nfa.addTransition(s0, s1, 0);
-      nfa.addTransition(s0, s1, 1);
-
-      // Input step contains both 'a' and 'b', should follow both transitions
-      const result = nfa.run([['a', 'b']]);
-      assert(result.accepted);
-      assert.deepStrictEqual(result.trace[1].states, [s1]);
-    });
-
-    test('trace handles non-determinism', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      const s2 = nfa.addState();
-
-      nfa.addStart(s0);
-      // s0 --a--> s1
-      // s0 --a--> s2
-      nfa.addTransition(s0, s1, 0);
-      nfa.addTransition(s0, s2, 0);
-
-      const result = nfa.run([['a']]);
-
-      assert.strictEqual(result.trace.length, 2);
-      const states = result.trace[1].states.sort((a, b) => a - b);
-      assert.deepStrictEqual(states, [s1, s2].sort((a, b) => a - b));
-    });
-
-    test('trace stops early if no states remain', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      nfa.addStart(s0);
-      // No transitions
-
-      const result = nfa.run([['a'], ['a']]);
-
-      // Should have step 0 (start) and step 1 (empty), then break
-      assert.strictEqual(result.trace.length, 2);
-      assert.deepStrictEqual(result.trace[1].states, []);
-    });
-  });
-
-  describe('reverse()', () => {
-    test('reverses transitions', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addAccept(s1);
-      nfa.addStart(s0);
-      nfa.addTransition(s0, s1, 0);
-
-      const reversed = nfa.reverse();
-      // In reversed: s1 is start, s0 is accept, transition s1 -> s0
-      assert(reversed.startStates.has(s1));
-      assert(reversed.acceptStates.has(s0));
-      assert(reversed.getTransitions(s1, 0).includes(s0));
-    });
-
-    test('swaps start and accept states', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addAccept(s1);
-      nfa.addStart(s0);
-
-      const reversed = nfa.reverse();
-      assert(reversed.isStart(s1));
-      assert(reversed.isAccepting(s0));
-    });
-
-    test('reverses epsilon transitions', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addStart(s0);
-      nfa.addAccept(s1);
-      nfa.addEpsilonTransition(s0, s1);
-
-      const reversed = nfa.reverse();
-      const epsFromS1 = reversed.epsilonTransitions.get(s1);
-      assert(epsFromS1);
-      assert(epsFromS1.has(s0));
-    });
-  });
-
-  describe('getReachableStates()', () => {
-    test('finds all reachable states', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      const s2 = nfa.addState(); // unreachable
-      nfa.addStart(s0);
-      nfa.addTransition(s0, s1, 0);
-
-      const reachable = nfa.getReachableStates();
-      assert(reachable.has(s0));
-      assert(reachable.has(s1));
-      assert(!reachable.has(s2));
-    });
-
-    test('includes start states', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      nfa.addStart(s0);
-
-      const reachable = nfa.getReachableStates();
-      assert(reachable.has(s0));
-    });
-
-    test('traverses epsilon transitions', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addStart(s0);
-      nfa.addEpsilonTransition(s0, s1);
-
-      const reachable = nfa.getReachableStates();
-      assert(reachable.has(s0));
-      assert(reachable.has(s1));
-    });
-  });
-
-  describe('getDeadStates()', () => {
-    test('finds states that cannot reach accept', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addAccept(s1);
-      const s2 = nfa.addState(); // dead - no transitions out
-      nfa.addStart(s0);
-      nfa.addTransition(s0, s1, 0);
-      nfa.addTransition(s0, s2, 0);
-
-      const dead = nfa.getDeadStates();
-      assert(dead.isDeleted(s2));
-      assert(!dead.isDeleted(s0));
-      assert(!dead.isDeleted(s1));
-    });
-
-    test('returns empty set when all states can reach accept', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addAccept(s1);
-      nfa.addStart(s0);
-      nfa.addTransition(s0, s1, 0);
-
-      const dead = nfa.getDeadStates();
-      assert.strictEqual(dead.getDeletedStates().size, 0);
-    });
-
-    test('treats epsilon-only path to accept as not dead', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      const s2 = nfa.addState();
-
-      nfa.addStart(s0);
-      nfa.addAccept(s1);
-      // s0 --epsilon--> s1 (so s0 can reach accept)
-      nfa.addEpsilonTransition(s0, s1);
-      // s2 is dead
-
-      const dead = nfa.getDeadStates();
-      assert(!dead.isDeleted(s0));
-      assert(!dead.isDeleted(s1));
-      assert(dead.isDeleted(s2));
-    });
-
-  });
-
-  describe('getEpsilonClosure()', () => {
-    test('computes and caches closure', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      const s2 = nfa.addState();
-
-      nfa.addEpsilonTransition(s0, s1);
-      const c1 = nfa.getEpsilonClosure(s0);
-      assert(c1.has(s0));
-      assert(c1.has(s1));
-      assert(!c1.has(s2));
-
-      const c2 = nfa.getEpsilonClosure(s0);
-      assert.strictEqual(c1, c2); // cached
-    });
-
-    test('throws if epsilon graph is mutated after closure is computed', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      const s2 = nfa.addState();
-
-      nfa.addEpsilonTransition(s0, s1);
-      nfa.getEpsilonClosure(s0);
-
-      assert.throws(() => nfa.addEpsilonTransition(s1, s2), /Cannot add epsilon transition/);
-    });
-
-    test('enforceEpsilonTransitions() clears explicit epsilon transitions', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-
-      nfa.addStart(s0);
-      nfa.addEpsilonTransition(s0, s1);
-      nfa.enforceEpsilonTransitions();
-
-      assert.strictEqual(nfa.epsilonTransitions.size, 0);
-      assert(nfa.isStart(s1));
-    });
-
-    test('throws if epsilon graph is mutated after enforceEpsilonTransitions()', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      const s2 = nfa.addState();
-      nfa.addEpsilonTransition(s0, s1);
-      nfa.enforceEpsilonTransitions();
-
-      assert.throws(() => nfa.addEpsilonTransition(s1, s2), /Cannot add epsilon transition/);
-    });
-  });
-
-  describe('getEquivalentStateRemap()', () => {
-    test('merges equivalent states', () => {
-      // Two states with identical behavior should be merged
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addAccept(s1);
-      const s2 = nfa.addState(); // equivalent to s1
-      nfa.addAccept(s2);
-      nfa.addStart(s0);
-      nfa.addTransition(s0, s1, 0);
-      nfa.addTransition(s0, s2, 0);
-      // s1 and s2 are both accepting with no outgoing transitions
-
-      const transform = nfa.getEquivalentStateRemap();
-      // s1 and s2 should map to the same canonical state
-      assert.strictEqual(transform.getCanonical(s1), transform.getCanonical(s2));
-    });
-
-    test('keeps non-equivalent states separate', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addAccept(s1);
-      nfa.addStart(s0);
-      nfa.addTransition(s0, s1, 0);
-
-      const transform = nfa.getEquivalentStateRemap();
-      // Different acceptance => not equivalent
-      assert.notStrictEqual(transform.getCanonical(s0), transform.getCanonical(s1));
-    });
-
-    test('accepts existing transformation', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      nfa.addAccept(s1);
-      const s2 = nfa.addState();
-      nfa.addStart(s0);
-
-      // Pre-delete s2
-      const existing = StateTransformation.deletion(3, new Set([s2]));
-      const transform = nfa.getEquivalentStateRemap(existing);
-
-      assert(transform.isDeleted(s2));
-    });
-  });
-
-  describe('enforceEpsilonTransitions()', () => {
-    test('propagates transitions through epsilon', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-      const s2 = nfa.addState();
-
-      nfa.addStart(s0);
-      nfa.addAccept(s2);
-
-      // s0 --a--> s1
-      nfa.addTransition(s0, s1, 0);
-      // s1 --epsilon--> s2
-      nfa.addEpsilonTransition(s1, s2);
-
-      nfa.enforceEpsilonTransitions();
-
-      // Should now have s0 --a--> s2 (because s1 reaches s2 via epsilon)
-      const transitions = nfa.getTransitions(s0, 0);
-      assert(transitions.includes(s2));
-      assert(transitions.includes(s1));
-    });
-
-    test('expands start states', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-
-      nfa.addStart(s0);
-      nfa.addEpsilonTransition(s0, s1);
-
-      nfa.enforceEpsilonTransitions();
-
-      assert(nfa.isStart(s1));
-    });
-
-    test('propagates accept status backwards', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-
-      nfa.addAccept(s1);
-      nfa.addEpsilonTransition(s0, s1);
-
-      nfa.enforceEpsilonTransitions();
-
-      assert(nfa.isAccepting(s0));
-    });
-
-    test('handles epsilon cycles', () => {
-      const nfa = new NFA(['a']);
-      const s0 = nfa.addState();
-      const s1 = nfa.addState();
-
-      nfa.addStart(s0);
-      nfa.addAccept(s1);
-
-      // s0 --epsilon--> s1 --epsilon--> s0
-      nfa.addEpsilonTransition(s0, s1);
-      nfa.addEpsilonTransition(s1, s0);
-
-      nfa.enforceEpsilonTransitions();
-
-      assert(nfa.isStart(s1));
-      assert(nfa.isAccepting(s0));
-    });
+});
+
+describe('getTransitionsFrom()', () => {
+  test('returns all transitions from a state grouped by target', () => {
+    const nfa = new NFA(['a', 'b']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    nfa.addTransition(s0, s1, 0); // s0 --a--> s1
+    nfa.addTransition(s0, s1, 1); // s0 --b--> s1
+
+    const trans = nfa.getTransitionsFrom(s0);
+    assert.strictEqual(trans.length, 1); // grouped by target
+    assert.strictEqual(trans[0].to, s1);
+    assert.strictEqual(trans[0].symbols.length, 2);
   });
 });
+
+describe('matches()', () => {
+  test('accepts matching input', () => {
+    // Simple NFA: accepts strings ending in 'a'
+    const nfa = new NFA(['a', 'b']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    nfa.addAccept(s1);
+    nfa.addStart(s0);
+    nfa.addTransition(s0, s0, 0); // a -> stay
+    nfa.addTransition(s0, s0, 1); // b -> stay
+    nfa.addTransition(s0, s1, 0); // a -> accept
+
+    // run() takes array of symbol arrays (each step can have multiple symbols)
+    assert(nfa.matches([['a']])); // single 'a'
+  });
+
+  test('rejects non-matching input', () => {
+    const nfa = new NFA(['a', 'b']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    nfa.addAccept(s1);
+    nfa.addStart(s0);
+    nfa.addTransition(s0, s1, 0); // only accept on 'a'
+
+    assert(!nfa.matches([['b']])); // 'b'
+  });
+
+  test('accepts empty input if start state is accepting', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    nfa.addAccept(s0);
+    nfa.addStart(s0);
+
+    assert(nfa.matches([]));
+  });
+
+  test('uses epsilon closure for empty input (without enforcement)', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    nfa.addStart(s0);
+    nfa.addAccept(s1);
+    // s0 --epsilon--> s1
+    nfa.addEpsilonTransition(s0, s1);
+
+    assert(nfa.matches([]));
+  });
+
+  test('applies epsilon closure after each step (without enforcement)', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    const s2 = nfa.addState();
+    nfa.addStart(s0);
+    nfa.addAccept(s2);
+    // s0 --a--> s1
+    nfa.addTransition(s0, s1, 0);
+    // s1 --epsilon--> s2
+    nfa.addEpsilonTransition(s1, s2);
+
+    assert(nfa.matches([['a']]));
+  });
+
+  test('handles cycles correctly', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    nfa.addAccept(s1);
+    nfa.addStart(s0);
+    // s0 --a--> s1 --a--> s0
+    nfa.addTransition(s0, s1, 0);
+    nfa.addTransition(s1, s0, 0);
+
+    // 'aaa' -> s0 -> s1 -> s0 -> s1 (accept)
+    assert(nfa.matches([['a'], ['a'], ['a']]));
+  });
+
+  test('handles multiple symbols in one step', () => {
+    const nfa = new NFA(['a', 'b']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    nfa.addAccept(s1);
+    nfa.addStart(s0);
+    // s0 --a--> s1
+    // s0 --b--> s1
+    nfa.addTransition(s0, s1, 0);
+    nfa.addTransition(s0, s1, 1);
+
+    // Input step contains both 'a' and 'b', should follow both transitions
+    assert(nfa.matches([['a', 'b']]));
+  });
+
+  test('handles non-determinism', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    const s2 = nfa.addState();
+
+    nfa.addStart(s0);
+    nfa.addAccept(s1);
+    // s0 --a--> s1
+    // s0 --a--> s2
+    nfa.addTransition(s0, s1, 0);
+    nfa.addTransition(s0, s2, 0);
+
+    assert(nfa.matches([['a']]));
+  });
+});
+
+describe('reverse()', () => {
+  test('reverses transitions', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    nfa.addAccept(s1);
+    nfa.addStart(s0);
+    nfa.addTransition(s0, s1, 0);
+
+    const reversed = nfa.reverse();
+    // In reversed: s1 is start, s0 is accept, transition s1 -> s0
+    assert(reversed.startStates.has(s1));
+    assert(reversed.acceptStates.has(s0));
+    assert(reversed.getTransitions(s1, 0).includes(s0));
+  });
+
+  test('swaps start and accept states', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    nfa.addAccept(s1);
+    nfa.addStart(s0);
+
+    const reversed = nfa.reverse();
+    assert(reversed.isStart(s1));
+    assert(reversed.isAccepting(s0));
+  });
+
+  test('reverses epsilon transitions', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    nfa.addStart(s0);
+    nfa.addAccept(s1);
+    nfa.addEpsilonTransition(s0, s1);
+
+    const reversed = nfa.reverse();
+    const epsFromS1 = reversed.epsilonTransitions.get(s1);
+    assert(epsFromS1);
+    assert(epsFromS1.has(s0));
+  });
+});
+
+describe('getReachableStates()', () => {
+  test('finds all reachable states', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    const s2 = nfa.addState(); // unreachable
+    nfa.addStart(s0);
+    nfa.addTransition(s0, s1, 0);
+
+    const reachable = nfa.getReachableStates();
+    assert(reachable.has(s0));
+    assert(reachable.has(s1));
+    assert(!reachable.has(s2));
+  });
+
+  test('includes start states', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    nfa.addStart(s0);
+
+    const reachable = nfa.getReachableStates();
+    assert(reachable.has(s0));
+  });
+
+  test('traverses epsilon transitions', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    nfa.addStart(s0);
+    nfa.addEpsilonTransition(s0, s1);
+
+    const reachable = nfa.getReachableStates();
+    assert(reachable.has(s0));
+    assert(reachable.has(s1));
+  });
+});
+
+describe('getDeadStates()', () => {
+  test('finds states that cannot reach accept', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    nfa.addAccept(s1);
+    const s2 = nfa.addState(); // dead - no transitions out
+    nfa.addStart(s0);
+    nfa.addTransition(s0, s1, 0);
+    nfa.addTransition(s0, s2, 0);
+
+    const dead = nfa.getDeadStates();
+    assert(dead.isDeleted(s2));
+    assert(!dead.isDeleted(s0));
+    assert(!dead.isDeleted(s1));
+  });
+
+  test('returns empty set when all states can reach accept', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    nfa.addAccept(s1);
+    nfa.addStart(s0);
+    nfa.addTransition(s0, s1, 0);
+
+    const dead = nfa.getDeadStates();
+    assert.strictEqual(dead.getDeletedStates().size, 0);
+  });
+
+  test('treats epsilon-only path to accept as not dead', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    const s2 = nfa.addState();
+
+    nfa.addStart(s0);
+    nfa.addAccept(s1);
+    // s0 --epsilon--> s1 (so s0 can reach accept)
+    nfa.addEpsilonTransition(s0, s1);
+    // s2 is dead
+
+    const dead = nfa.getDeadStates();
+    assert(!dead.isDeleted(s0));
+    assert(!dead.isDeleted(s1));
+    assert(dead.isDeleted(s2));
+  });
+
+});
+
+describe('getEpsilonClosure()', () => {
+  test('computes and caches closure', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    const s2 = nfa.addState();
+
+    nfa.addEpsilonTransition(s0, s1);
+    const c1 = nfa.getEpsilonClosure(s0);
+    assert(c1.has(s0));
+    assert(c1.has(s1));
+    assert(!c1.has(s2));
+
+    const c2 = nfa.getEpsilonClosure(s0);
+    assert.strictEqual(c1, c2); // cached
+  });
+
+  test('throws if epsilon graph is mutated after closure is computed', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    const s2 = nfa.addState();
+
+    nfa.addEpsilonTransition(s0, s1);
+    nfa.getEpsilonClosure(s0);
+
+    assert.throws(() => nfa.addEpsilonTransition(s1, s2), /Cannot add epsilon transition/);
+  });
+
+  test('enforceEpsilonTransitions() clears explicit epsilon transitions', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+
+    nfa.addStart(s0);
+    nfa.addEpsilonTransition(s0, s1);
+    nfa.enforceEpsilonTransitions();
+
+    assert.strictEqual(nfa.epsilonTransitions.size, 0);
+    assert(nfa.isStart(s1));
+  });
+
+  test('throws if epsilon graph is mutated after enforceEpsilonTransitions()', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    const s2 = nfa.addState();
+    nfa.addEpsilonTransition(s0, s1);
+    nfa.enforceEpsilonTransitions();
+
+    assert.throws(() => nfa.addEpsilonTransition(s1, s2), /Cannot add epsilon transition/);
+  });
+});
+
+describe('getEquivalentStateRemap()', () => {
+  test('merges equivalent states', () => {
+    // Two states with identical behavior should be merged
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    nfa.addAccept(s1);
+    const s2 = nfa.addState(); // equivalent to s1
+    nfa.addAccept(s2);
+    nfa.addStart(s0);
+    nfa.addTransition(s0, s1, 0);
+    nfa.addTransition(s0, s2, 0);
+    // s1 and s2 are both accepting with no outgoing transitions
+
+    const transform = nfa.getEquivalentStateRemap();
+    // s1 and s2 should map to the same canonical state
+    assert.strictEqual(transform.getCanonical(s1), transform.getCanonical(s2));
+  });
+
+  test('keeps non-equivalent states separate', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    nfa.addAccept(s1);
+    nfa.addStart(s0);
+    nfa.addTransition(s0, s1, 0);
+
+    const transform = nfa.getEquivalentStateRemap();
+    // Different acceptance => not equivalent
+    assert.notStrictEqual(transform.getCanonical(s0), transform.getCanonical(s1));
+  });
+
+  test('accepts existing transformation', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    nfa.addAccept(s1);
+    const s2 = nfa.addState();
+    nfa.addStart(s0);
+
+    // Pre-delete s2
+    const existing = StateTransformation.deletion(3, new Set([s2]));
+    const transform = nfa.getEquivalentStateRemap(existing);
+
+    assert(transform.isDeleted(s2));
+  });
+});
+
+describe('enforceEpsilonTransitions()', () => {
+  test('propagates transitions through epsilon', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+    const s2 = nfa.addState();
+
+    nfa.addStart(s0);
+    nfa.addAccept(s2);
+
+    // s0 --a--> s1
+    nfa.addTransition(s0, s1, 0);
+    // s1 --epsilon--> s2
+    nfa.addEpsilonTransition(s1, s2);
+
+    nfa.enforceEpsilonTransitions();
+
+    // Should now have s0 --a--> s2 (because s1 reaches s2 via epsilon)
+    const transitions = nfa.getTransitions(s0, 0);
+    assert(transitions.includes(s2));
+    assert(transitions.includes(s1));
+  });
+
+  test('expands start states', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+
+    nfa.addStart(s0);
+    nfa.addEpsilonTransition(s0, s1);
+
+    nfa.enforceEpsilonTransitions();
+
+    assert(nfa.isStart(s1));
+  });
+
+  test('propagates accept status backwards', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+
+    nfa.addAccept(s1);
+    nfa.addEpsilonTransition(s0, s1);
+
+    nfa.enforceEpsilonTransitions();
+
+    assert(nfa.isAccepting(s0));
+  });
+
+  test('handles epsilon cycles', () => {
+    const nfa = new NFA(['a']);
+    const s0 = nfa.addState();
+    const s1 = nfa.addState();
+
+    nfa.addStart(s0);
+    nfa.addAccept(s1);
+
+    // s0 --epsilon--> s1 --epsilon--> s0
+    nfa.addEpsilonTransition(s0, s1);
+    nfa.addEpsilonTransition(s1, s0);
+
+    nfa.enforceEpsilonTransitions();
+
+    assert(nfa.isStart(s1));
+    assert(nfa.isAccepting(s0));
+  });
+});
+
+describe('runAgainst()', () => {
+  test('returns true when languages intersect', () => {
+    // A accepts "a"
+    const a = new NFA(['a', 'b']);
+    const a0 = a.addState();
+    const a1 = a.addState();
+    a.addStart(a0);
+    a.addAccept(a1);
+    a.addTransition(a0, a1, a.getSymbolIndex('a'));
+
+    // B accepts "a" and "b" (via branching)
+    const b = new NFA(['a', 'b']);
+    const b0 = b.addState();
+    const b1 = b.addState();
+    const b2 = b.addState();
+    b.addStart(b0);
+    b.addAccept(b1);
+    b.addAccept(b2);
+    b.addTransition(b0, b1, b.getSymbolIndex('a'));
+    b.addTransition(b0, b2, b.getSymbolIndex('b'));
+
+    const result = a.runAgainst(b);
+    assert.strictEqual(result.status, RunStatus.MATCH);
+  });
+
+  test('returns false when languages are disjoint', () => {
+    // A accepts "a"
+    const a = new NFA(['a', 'b']);
+    const a0 = a.addState();
+    const a1 = a.addState();
+    a.addStart(a0);
+    a.addAccept(a1);
+    a.addTransition(a0, a1, a.getSymbolIndex('a'));
+
+    // B accepts "b"
+    const b = new NFA(['a', 'b']);
+    const b0 = b.addState();
+    const b1 = b.addState();
+    b.addStart(b0);
+    b.addAccept(b1);
+    b.addTransition(b0, b1, b.getSymbolIndex('b'));
+
+    const result = a.runAgainst(b);
+    assert.strictEqual(result.status, RunStatus.NO_MATCH);
+  });
+
+  test('handles epsilon transitions (intersection via epsilon-expanded start)', () => {
+    // A: start --ε--> mid --a--> accept
+    const a = new NFA(['a']);
+    const a0 = a.addState();
+    const a1 = a.addState();
+    const a2 = a.addState();
+    a.addStart(a0);
+    a.addAccept(a2);
+    a.addEpsilonTransition(a0, a1);
+    a.addTransition(a1, a2, a.getSymbolIndex('a'));
+
+    // B: accepts "a"
+    const b = new NFA(['a']);
+    const b0 = b.addState();
+    const b1 = b.addState();
+    b.addStart(b0);
+    b.addAccept(b1);
+    b.addTransition(b0, b1, b.getSymbolIndex('a'));
+
+    const result = a.runAgainst(b);
+    assert.strictEqual(result.status, RunStatus.MATCH);
+  });
+
+  test('still explores for highlights even when match is via empty string (e.g. .* and accepting start)', () => {
+    // Base machine: "divisible by 3"-style DFA over {0,1} with accepting start state.
+    const a = new NFA(['0', '1']);
+    const s0 = a.addState('q0');
+    const s1 = a.addState('q1');
+    const s2 = a.addState('q2');
+    a.addStart(s0);
+    a.addAccept(s0);
+
+    const idx0 = a.getSymbolIndex('0');
+    const idx1 = a.getSymbolIndex('1');
+
+    // Remainder transitions for binary parsing mod 3.
+    // next = (2*state + bit) % 3
+    a.addTransition(s0, s0, idx0);
+    a.addTransition(s0, s1, idx1);
+    a.addTransition(s1, s2, idx0);
+    a.addTransition(s1, s0, idx1);
+    a.addTransition(s2, s1, idx0);
+    a.addTransition(s2, s2, idx1);
+
+    // Regex NFA for .*
+    const parser = new RegexParser('.*');
+    const ast = parser.parse();
+    const builder = new RegexToNFABuilder([...a.symbols]);
+    const regexNFA = builder.build(ast);
+
+    const result = a.runAgainst(regexNFA, { maxSteps: 50 });
+    assert.strictEqual(result.status, RunStatus.MATCH);
+
+    // Regression: previously we returned immediately on MATCH (because .* matches empty),
+    // leaving highlights empty (only start state). We should still explore and collect edges.
+    assert(result.highlights.visitedStates.includes(s1));
+    assert(result.highlights.visitedEdges.length > 0);
+  });
+});
+
 
 

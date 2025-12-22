@@ -68,7 +68,7 @@ describe('NFAView', () => {
 
       assert.deepStrictEqual(view.mergedSources.get(0), [0]);
       assert.deepStrictEqual(view.mergedSources.get(1), [1, 2]);
-      assert.strictEqual(view.mergedSources.has(2), false);
+      assert(!view.mergedSources.has(2));
     });
 
     test('excludes deleted states', () => {
@@ -80,7 +80,7 @@ describe('NFAView', () => {
       const view = new NFAView(nfa, { transform });
 
       assert.deepStrictEqual(view.mergedSources.get(0), [0]);
-      assert.strictEqual(view.mergedSources.has(1), false);
+      assert(!view.mergedSources.has(1));
       assert.deepStrictEqual(view.mergedSources.get(2), [2]);
     });
   });
@@ -93,8 +93,8 @@ describe('NFAView', () => {
       const transform = StateTransformation.identity(2);
       const view = new NFAView(nfa, { transform });
 
-      assert.strictEqual(view.isCanonical(0), true);
-      assert.strictEqual(view.isCanonical(1), true);
+      assert(view.isCanonical(0));
+      assert(view.isCanonical(1));
     });
 
     test('returns false for merged states', () => {
@@ -106,9 +106,9 @@ describe('NFAView', () => {
       const transform = new StateTransformation(new Int32Array([0, 1, 1]));
       const view = new NFAView(nfa, { transform });
 
-      assert.strictEqual(view.isCanonical(0), true);
-      assert.strictEqual(view.isCanonical(1), true);
-      assert.strictEqual(view.isCanonical(2), false);
+      assert(view.isCanonical(0));
+      assert(view.isCanonical(1));
+      assert(!view.isCanonical(2));
     });
 
     test('returns false for deleted states', () => {
@@ -118,8 +118,8 @@ describe('NFAView', () => {
       const transform = StateTransformation.deletion(2, new Set([1]));
       const view = new NFAView(nfa, { transform });
 
-      assert.strictEqual(view.isCanonical(0), true);
-      assert.strictEqual(view.isCanonical(1), false);
+      assert(view.isCanonical(0));
+      assert(!view.isCanonical(1));
     });
   });
 
@@ -169,8 +169,8 @@ describe('NFAView', () => {
       const transform = StateTransformation.identity(2);
       const view = new NFAView(nfa, { transform });
 
-      assert.strictEqual(view.isMergedState(0), false);
-      assert.strictEqual(view.isMergedState(1), false);
+      assert(!view.isMergedState(0));
+      assert(!view.isMergedState(1));
     });
 
     test('returns true for states with multiple sources', () => {
@@ -182,8 +182,8 @@ describe('NFAView', () => {
       const transform = new StateTransformation(new Int32Array([0, 1, 1]));
       const view = new NFAView(nfa, { transform });
 
-      assert.strictEqual(view.isMergedState(0), false);
-      assert.strictEqual(view.isMergedState(1), true);
+      assert(!view.isMergedState(0));
+      assert(view.isMergedState(1));
     });
 
     test('returns false for non-canonical states', () => {
@@ -195,7 +195,7 @@ describe('NFAView', () => {
       const view = new NFAView(nfa, { transform });
 
       // q2 is not canonical, so it's not in mergedSources
-      assert.strictEqual(view.isMergedState(2), false);
+      assert(!view.isMergedState(2));
     });
   });
 
@@ -338,7 +338,7 @@ describe('NFAView', () => {
       const transform = StateTransformation.identity(2);
       const view = new NFAView(nfa, { transform });
 
-      assert.strictEqual(view.isDeterministic(), true);
+      assert(view.isDeterministic());
     });
 
     test('returns false for multiple transitions on same symbol', () => {
@@ -352,7 +352,7 @@ describe('NFAView', () => {
       const transform = StateTransformation.identity(3);
       const view = new NFAView(nfa, { transform });
 
-      assert.strictEqual(view.isDeterministic(), false);
+      assert(!view.isDeterministic());
     });
 
     test('returns false for multiple start states', () => {
@@ -364,7 +364,7 @@ describe('NFAView', () => {
       const transform = StateTransformation.identity(2);
       const view = new NFAView(nfa, { transform });
 
-      assert.strictEqual(view.isDeterministic(), false);
+      assert(!view.isDeterministic());
     });
 
     test('returns false if epsilon transitions exist (when shown)', () => {
@@ -376,7 +376,7 @@ describe('NFAView', () => {
       const transform = StateTransformation.identity(2);
       const view = new NFAView(nfa, { transform });
 
-      assert.strictEqual(view.isDeterministic(), false);
+      assert(!view.isDeterministic());
     });
   });
 
@@ -398,7 +398,7 @@ describe('NFAView', () => {
       const info = view.getStateInfo();
       const startInfo = info.find(s => s.id === s0);
       assert(startInfo.isStart);
-      assert.strictEqual(startInfo.isDead, false);
+      assert(!startInfo.isDead);
     });
   });
 

@@ -11,7 +11,7 @@ describe('RegexParser', () => {
     const ast = parser.parse();
     assert(ast instanceof RegexAstNode.Charset);
     assert.deepStrictEqual(ast.chars, ['a']);
-    assert.strictEqual(ast.negated, false);
+    assert(!ast.negated);
   });
 
   test('parses concatenation', () => {
@@ -67,8 +67,8 @@ describe('RegexToNFABuilder', () => {
     const nfa = builder.build(ast);
 
     const inputSeq = input.split('').map(c => [c]);
-    const result = nfa.run(inputSeq);
-    assert.strictEqual(result.accepted, expected, `Regex /${regex}/ should ${expected ? 'accept' : 'reject'} "${input}"`);
+    const accepted = nfa.matches(inputSeq);
+    assert.strictEqual(accepted, expected, `Regex /${regex}/ should ${expected ? 'accept' : 'reject'} "${input}"`);
   }
 
   test('builds NFA for single char', () => {

@@ -69,3 +69,21 @@ export function extractFunctionBody(fn) {
     .map(line => line.slice(Math.min(line.length, minIndent)))
     .join('\n');
 }
+
+/**
+ * Shallow equality for arrays.
+ *
+ * @template T
+ * @param {T[]} a
+ * @param {T[]} b
+ * @returns {boolean}
+ */
+export function arraysAreEqual(a, b) {
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}

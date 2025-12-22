@@ -36,17 +36,19 @@ describe('NFAVisualizer Logic', () => {
     getTransitionsFrom: (id) => new Map(),
   });
 
-  describe('calculateTraceHighlights', () => {
+  describe('calculateExecutionHighlights', () => {
     test('highlights visited states', () => {
       const viz = new NFAVisualizer(null);
       viz.view = createMockView();
 
-      const trace = [
-        { states: [0] },
-        { states: [1] }
-      ];
+      const highlights = {
+        visitedStates: [0, 1],
+        visitedEdges: [],
+        visitedEpsilonEdges: [],
+        finalStates: [],
+      };
 
-      const result = viz.calculateTraceHighlights(trace);
+      const result = viz.calculateExecutionHighlights(highlights);
 
       assert(result.visitedStates.has(0));
       assert(result.visitedStates.has(1));
@@ -57,12 +59,14 @@ describe('NFAVisualizer Logic', () => {
       const viz = new NFAVisualizer(null);
       viz.view = createMockView();
 
-      const trace = [
-        { states: [0] },
-        { states: [1] }
-      ];
+      const highlights = {
+        visitedStates: [0, 1],
+        visitedEdges: [],
+        visitedEpsilonEdges: [],
+        finalStates: [1],
+      };
 
-      const result = viz.calculateTraceHighlights(trace);
+      const result = viz.calculateExecutionHighlights(highlights);
 
       assert(result.finalStates.has(1));
       assert(!result.finalStates.has(0));
@@ -80,17 +84,19 @@ describe('NFAVisualizer Logic', () => {
 
       viz.view = mockView;
 
-      const trace = [
-        { states: [0] },
-        { states: [1] }
-      ];
+      const highlights = {
+        visitedStates: [0, 1],
+        visitedEdges: ['0-1'],
+        visitedEpsilonEdges: [],
+        finalStates: [],
+      };
 
-      const result = viz.calculateTraceHighlights(trace);
+      const result = viz.calculateExecutionHighlights(highlights);
 
       assert(result.visitedEdges.has('0-1'));
     });
 
-    test('highlights epsilon transitions within a step', () => {
+    test('highlights epsilon transitions', () => {
       const viz = new NFAVisualizer(null);
       const mockView = createMockView();
 
@@ -102,12 +108,14 @@ describe('NFAVisualizer Logic', () => {
 
       viz.view = mockView;
 
-      // Trace where both 0 and 1 are active in the same step (due to epsilon closure)
-      const trace = [
-        { states: [0, 1] }
-      ];
+      const highlights = {
+        visitedStates: [0, 1],
+        visitedEdges: [],
+        visitedEpsilonEdges: ['0-1'],
+        finalStates: [],
+      };
 
-      const result = viz.calculateTraceHighlights(trace);
+      const result = viz.calculateExecutionHighlights(highlights);
 
       assert(result.visitedEpsilonEdges.has('0-1'));
     });
@@ -131,12 +139,14 @@ describe('NFAVisualizer Logic', () => {
 
       viz.view = mockView;
 
-      const trace = [
-        { states: [10] }, // Canonical 1
-        { states: [20] }  // Canonical 2
-      ];
+      const highlights = {
+        visitedStates: [10, 20],
+        visitedEdges: ['10-20'],
+        visitedEpsilonEdges: [],
+        finalStates: [20],
+      };
 
-      const result = viz.calculateTraceHighlights(trace);
+      const result = viz.calculateExecutionHighlights(highlights);
 
       assert(result.visitedStates.has(1));
       assert(result.visitedStates.has(2));

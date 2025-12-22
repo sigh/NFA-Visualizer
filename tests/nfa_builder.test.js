@@ -444,8 +444,7 @@ describe('NFABuilder', () => {
 
     assert(nfa.numStates() > 0);
     // Should accept sequence of 'a's - run() takes array of symbol arrays
-    const result = nfa.run([['a'], ['a']]); // two 'a's
-    assert(result.accepted);
+    assert(nfa.matches([['a'], ['a']])); // two 'a's
   });
 
   test('handles numeric symbols correctly', () => {
@@ -494,16 +493,13 @@ describe('NFABuilder', () => {
     const nfa = builder.build();
 
     // 'ab' should be accepted - run() takes array of symbol arrays
-    const result1 = nfa.run([['a'], ['b']]);
-    assert(result1.accepted);
+    assert(nfa.matches([['a'], ['b']]));
 
     // 'aab' should be accepted
-    const result2 = nfa.run([['a'], ['a'], ['b']]);
-    assert(result2.accepted);
+    assert(nfa.matches([['a'], ['a'], ['b']]));
 
     // 'ba' should not be accepted
-    const result3 = nfa.run([['b'], ['a']]);
-    assert(!result3.accepted);
+    assert(!nfa.matches([['b'], ['a']]));
   });
 });
 
@@ -530,11 +526,9 @@ describe('Integration', () => {
     const nfa = builder.build();
 
     // Should accept exactly 3 symbols - run() takes array of symbol arrays
-    const result1 = nfa.run([['x'], ['x'], ['x']]); // 3 x's
-    assert(result1.accepted);
+    assert(nfa.matches([['x'], ['x'], ['x']])); // 3 x's
 
-    const result2 = nfa.run([['x'], ['x']]); // 2 x's
-    assert(!result2.accepted);
+    assert(!nfa.matches([['x'], ['x']])); // 2 x's
   });
 
   test('split editor workflow: split -> build -> parse -> split', () => {
@@ -573,8 +567,7 @@ describe('Integration', () => {
     const nfa = builder.build();
 
     // Three transitions (one for each symbol) should reach state 3
-    const result = nfa.run([['1'], ['1'], ['1']]); // any 3 digits
-    assert(result.accepted);
+    assert(nfa.matches([['1'], ['1'], ['1']])); // any 3 digits
   });
 });
 
@@ -637,8 +630,7 @@ describe('epsilon transitions', () => {
     assert(nfa.startStates.has(1));
 
     // Empty string should be accepted (start includes epsilon-reachable accept state)
-    const result = nfa.run([]);
-    assert(result.accepted);
+    assert(nfa.matches([]));
   });
 
   test('epsilon closure expands transitions', () => {
@@ -654,8 +646,7 @@ describe('epsilon transitions', () => {
     const nfa = builder.build();
 
     // 'a' should reach both 1 and 2 (via epsilon)
-    const result = nfa.run([['a']]);
-    assert(result.accepted);
+    assert(nfa.matches([['a']]));
   });
 
   test('epsilon closure is transitive', () => {
@@ -681,8 +672,7 @@ describe('epsilon transitions', () => {
     assert.strictEqual(nfa.startStates.size, 4);
 
     // Empty string should be accepted
-    const result = nfa.run([]);
-    assert(result.accepted);
+    assert(nfa.matches([]));
   });
 
   test('epsilon to accepting state makes source accepting', () => {
@@ -756,8 +746,7 @@ describe('epsilon transitions', () => {
     assert.strictEqual(nfa.numStates(), 3);
 
     // 'a' from start should reach state 2
-    const result = nfa.run([['a']]);
-    assert(result.accepted);
+    assert(nfa.matches([['a']]));
   });
 
   test('chained epsilon then transition is explored', () => {
@@ -781,8 +770,7 @@ describe('epsilon transitions', () => {
 
     assert.strictEqual(nfa.numStates(), 4);
 
-    const result = nfa.run([['a']]);
-    assert(result.accepted);
+    assert(nfa.matches([['a']]));
   });
 });
 

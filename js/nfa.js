@@ -8,12 +8,30 @@
  * @module nfa
  */
 
+import { arraysAreEqual } from './util.js';
+
 // ============================================
 // Constants
 // ============================================
 
 /** Default symbol class (regex character class syntax) */
 export const DEFAULT_SYMBOL_CLASS = '1-9';
+
+/** Enum-like status values returned by NFA.runAgainst() */
+export const RunStatus = Object.freeze({
+  MATCH: 'match',
+  NO_MATCH: 'no-match',
+  LIMIT_MAX_STEPS: 'limit-max-steps',
+});
+
+/**
+ * @typedef {{
+ *   visitedStates: number[],
+ *   visitedEdges: string[],
+ *   visitedEpsilonEdges: string[],
+ *   finalStates: number[],
+ * }} RunHighlights
+ */
 
 // ============================================
 // State Transformation
@@ -160,6 +178,12 @@ export class NFA {
     this._epsilonClosure = null;
   }
 
+  _assertValidStateId(stateId, label) {
+    if (!Number.isInteger(stateId) || stateId < 0 || stateId >= this.numStates()) {
+      throw new RangeError(`Invalid ${label} state: ${stateId}`);
+    }
+  }
+
   /**
    * Create a deep copy of this NFA.
    * Copies transitions, start/accept sets, labels, and epsilon transitions.
@@ -248,6 +272,7 @@ export class NFA {
    * @return {boolean} True if the state was newly marked as a start state
   */
   addStart(stateId) {
+    this._assertValidStateId(stateId, 'start');
     if (this.startStates.has(stateId)) return false;
     this.startStates.add(stateId);
     return true;
@@ -257,6 +282,7 @@ export class NFA {
    * @return {boolean} True if the state was newly marked as accepting
   */
   addAccept(stateId) {
+    this._assertValidStateId(stateId, 'accept');
     if (this.acceptStates.has(stateId)) return false;
     this.acceptStates.add(stateId);
     return true;
@@ -266,8 +292,9 @@ export class NFA {
    * @return {boolean} True if the transition was newly added (not a duplicate)
   */
   addTransition(fromState, toState, symbolIndex) {
+    this._assertValidStateId(fromState, 'from');
+    this._assertValidStateId(toState, 'to');
     const stateTransitions = this._transitions[fromState];
-    if (!stateTransitions) return false;
 
     if (!stateTransitions[symbolIndex]) {
       stateTransitions[symbolIndex] = [];
@@ -286,6 +313,8 @@ export class NFA {
    * @returns {boolean} True if the transition was newly added
    */
   addEpsilonTransition(fromState, toState) {
+    this._assertValidStateId(fromState, 'from');
+    this._assertValidStateId(toState, 'to');
     if (this._epsilonClosure !== null) {
       throw new Error('Cannot add epsilon transition after epsilon closure has been computed');
     }
@@ -365,54 +394,171 @@ export class NFA {
   }
 
   /**
-   * Run the NFA on an input sequence.
+   * Run the NFA on an input sequence and return whether it matches.
    * Each input element is an array of symbols to process simultaneously.
-   * Returns whether accepted and an execution trace.
+   *
+   * This is implemented as a thin wrapper around runAgainst(): we build a simple
+   * acyclic NFA that accepts exactly the given input pattern (one step per
+   * input element; if a step contains multiple symbols, any one of them may be
+   * taken).
+   *
    * @param {Array<string[]>} inputSequence - Array of symbol arrays
+   * @returns {boolean}
    */
-  run(inputSequence) {
-    const useEpsilonClosure = this.epsilonTransitions.size > 0;
+  matches(inputSequence) {
+    const pattern = Array.isArray(inputSequence) ? inputSequence : [];
 
-    const epsilonClosureOfSet = (states) => {
+    // Build a simple “input NFA” with states 0..n, start=0, accept=n.
+    // Each step i adds transitions (i -> i+1) for each allowed symbol.
+    const inputNFA = new NFA([...this.symbols]);
+    for (let i = 0; i <= pattern.length; i++) {
+      inputNFA.addState();
+    }
+    inputNFA.addStart(0);
+    inputNFA.addAccept(pattern.length);
+
+    for (let i = 0; i < pattern.length; i++) {
+      const symbols = pattern[i] ?? [];
+      for (const symbol of symbols) {
+        const idx = inputNFA.getSymbolIndex(symbol);
+        if (idx === undefined) continue;
+        inputNFA.addTransition(i, i + 1, idx);
+      }
+    }
+
+    // With an acyclic input NFA, the product search space is bounded.
+    const maxSteps = this.numStates() * inputNFA.numStates() + 1;
+    return this.runAgainst(inputNFA, { maxSteps }).status === RunStatus.MATCH;
+  }
+
+  /**
+   * Run this NFA "against" another NFA by checking whether their languages intersect.
+   *
+   * In other words: returns whether there exists some input string that would be accepted
+   * by both automata.
+   *
+   * Notes:
+   * - Does not mutate either NFA.
+  * - Epsilon transitions are handled by epsilon-expanding start states and
+  *   symbol-transition targets (worklist invariant: all queued pairs are already
+  *   epsilon-expanded).
+   * - Returns explicit visualization highlights for the base NFA.
+   *
+   * @param {NFA} other
+   * @param {{ maxSteps?: number }} [options]
+   * @returns {{ status: typeof RunStatus[keyof typeof RunStatus], highlights: RunHighlights }}
+   */
+  runAgainst(other, options = {}) {
+    const maxSteps = options.maxSteps ?? 5_000;
+
+    const a = this;
+    const b = other;
+
+    // Invariant (maintained by the app): both NFAs share the exact same alphabet ordering.
+    if (!arraysAreEqual(a.symbols, b.symbols)) {
+      throw new Error('runAgainst() requires identical alphabets');
+    }
+
+    // Visualization highlights (for base NFA `a` only)
+    const visitedStates = new Set();
+    const visitedEdges = new Set();
+    const visitedEpsilonEdges = new Set();
+    const finalStates = new Set();
+
+    // epsilonCloseUnion(nfa, stateIds) returns the union epsilon-closure of all given states.
+    // This always returns a Set, even when the NFA has no epsilon edges.
+    const epsilonCloseUnion = (nfa, stateIds) => {
+      if (nfa.epsilonTransitions.size === 0) {
+        return new Set(stateIds);
+      }
+
       const closed = new Set();
-      for (const s of states) {
-        for (const t of this.getEpsilonClosure(s)) {
-          closed.add(t);
-        }
+      for (const s of stateIds) {
+        for (const t of nfa.getEpsilonClosure(s)) closed.add(t);
       }
       return closed;
     };
 
-    let currentStates = new Set(this.startStates);
-    if (useEpsilonClosure) {
-      currentStates = epsilonClosureOfSet(currentStates);
-    }
-    const trace = [{ step: 0, input: null, states: [...currentStates] }];
-
-    for (let i = 0; i < inputSequence.length; i++) {
-      const symbols = inputSequence[i];
-      const nextStates = new Set();
-
-      // Follow transitions for all symbols in this step
-      for (const symbol of symbols) {
-        const symbolIndex = this.getSymbolIndex(symbol);
-        if (symbolIndex === undefined) continue;
-
-        for (const stateId of currentStates) {
-          for (const target of this.getTransitions(stateId, symbolIndex)) {
-            nextStates.add(target);
-          }
-        }
+    // Mark visited base states and epsilon edges induced by the epsilon-closure of stateId.
+    const markBaseClosure = (stateId) => {
+      if (a.epsilonTransitions.size === 0) {
+        visitedStates.add(stateId);
+        return;
       }
 
-      currentStates = useEpsilonClosure ? epsilonClosureOfSet(nextStates) : nextStates;
-      trace.push({ step: i + 1, input: symbols, states: [...currentStates] });
+      const closure = a.getEpsilonClosure(stateId);
+      for (const s of closure) visitedStates.add(s);
 
-      if (currentStates.size === 0) break;
+      for (const from of closure) {
+        const targets = a.epsilonTransitions.get(from);
+        if (!targets) continue;
+        for (const to of targets) {
+          if (closure.has(to)) visitedEpsilonEdges.add(`${from}-${to}`);
+        }
+      }
+    };
+
+    // Invariant: everything pushed onto the worklist is already epsilon-expanded.
+    // Concretely, we only push members of:
+    // - the (union) epsilon-closures of start states, and
+    // - the (union) epsilon-closures of symbol-transition targets.
+    // This is why we do NOT need to iterate over epsilonClose([from]) when moving.
+    const seenPairs = new Set();
+    const stack = [];
+    const bNum = b.numStates();
+    const pushProduct = (aStates, bStates) => {
+      for (const p of aStates) {
+        for (const q of bStates) {
+          const key = p * bNum + q;
+          if (seenPairs.has(key)) continue;
+          seenPairs.add(key);
+          stack.push([p, q]);
+        }
+      }
+    };
+
+    pushProduct(epsilonCloseUnion(a, a.startStates), epsilonCloseUnion(b, b.startStates));
+
+    let sawMatch = false;
+    let steps = 0;
+    while (stack.length > 0 && steps < maxSteps) {
+      steps++;
+      const [p, q] = stack.pop();
+
+      markBaseClosure(p);
+      if (b.isAccepting(q)) finalStates.add(p);
+      if (a.isAccepting(p) && b.isAccepting(q)) sawMatch = true;
+
+      for (let symIdx = 0; symIdx < a.symbols.length; symIdx++) {
+        const aTargets = a.getTransitions(p, symIdx);
+        const bTargets = b.getTransitions(q, symIdx);
+        if (aTargets.length === 0 || bTargets.length === 0) continue;
+
+        // This product step is feasible, so record base edges.
+        for (const to of aTargets) visitedEdges.add(`${p}-${to}`);
+
+        pushProduct(epsilonCloseUnion(a, aTargets), epsilonCloseUnion(b, bTargets));
+      }
     }
 
-    const accepted = [...currentStates].some(id => this.isAccepting(id));
-    return { accepted, trace };
+    let status;
+    if (sawMatch) {
+      status = RunStatus.MATCH;
+    } else if (stack.length > 0) {
+      status = RunStatus.LIMIT_MAX_STEPS;
+    } else {
+      status = RunStatus.NO_MATCH;
+    }
+
+    return {
+      status,
+      highlights: {
+        visitedStates: [...visitedStates].sort((x, y) => x - y),
+        visitedEdges: [...visitedEdges],
+        visitedEpsilonEdges: [...visitedEpsilonEdges],
+        finalStates: [...finalStates].sort((x, y) => x - y),
+      },
+    };
   }
 
   /** Get all transitions for visualization (converts indices back to symbols) */

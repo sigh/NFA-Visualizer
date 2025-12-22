@@ -12,6 +12,7 @@ import { RegexParser, RegexToNFABuilder } from './regex_parser.js';
 import { NFAView } from './nfa_view.js';
 import { NFAVisualizer, compactSymbolLabel } from './visualizer.js';
 import { EXAMPLES } from './examples.js';
+import { RunStatus } from './nfa.js';
 
 // ============================================
 // Configuration
@@ -113,6 +114,7 @@ class App {
       // Output
       errorDisplay: document.getElementById('error-display'),
       testInput: document.getElementById('test-input'),
+      testErrorDisplay: document.getElementById('test-error-display'),
       showTraceToggle: document.getElementById('show-trace-toggle'),
       testResult: document.getElementById('test-result'),
       cyContainer: document.getElementById('cy-container'),
@@ -1091,118 +1093,63 @@ class App {
     if (!nfa) {
       this.elements.testResult.textContent = '';
       this.elements.testResult.className = 'test-result';
+      this.hideTestError();
       this.visualizer.clearHighlight();
       return;
     }
 
     const inputStr = this.elements.testInput.value;
 
+    // Only show errors for exceptional conditions (limit, parse errors, etc.).
+    this.hideTestError();
+
     try {
-      const sequence = this.parseInputSequence(inputStr);
+      const pattern = (inputStr ?? '');
 
-      // Check for invalid symbols
-      const invalidSymbols = new Set();
-      for (const step of sequence) {
-        for (const symbol of step) {
-          if (nfa.getSymbolIndex(symbol) === undefined) {
-            invalidSymbols.add(symbol);
-          }
-        }
+      // Build an NFA from the regex using the current NFA's alphabet.
+      const symbols = [...nfa.symbols];
+      const parser = new RegexParser(pattern);
+      const ast = parser.parse();
+      const builder = new RegexToNFABuilder(symbols);
+      const regexNFA = builder.build(ast);
+
+      const result = nfa.runAgainst(regexNFA);
+
+      const isMatch = result.status === RunStatus.MATCH;
+      const isLimit = result.status === RunStatus.LIMIT_MAX_STEPS;
+
+      if (isMatch) {
+        this.showTestResult('✓ Match', true);
+      } else if (isLimit) {
+        this.showTestResult('', false);
+        this.elements.testResult.className = 'test-result';
+        this.showTestError('Limit reached while exploring (max steps).');
+      } else {
+        // Dead End is where none of the final states are live.
+        // Use the view's cached dead-state transform.
+        const deadTransform = this.view?.getDeadStates();
+        const finalStates = result.highlights?.finalStates ?? [];
+
+        const anyLiveFinal = deadTransform
+          ? finalStates.some((id) => !deadTransform.isDeleted(id))
+          : false;
+
+        const reason = anyLiveFinal ? 'Rejected' : 'Dead End';
+        this.showTestResult(`✗ ${reason}`, false);
       }
 
-      if (invalidSymbols.size > 0) {
-        this.showTestResult("✗ Invalid", false);
-        this.visualizer.clearHighlight();
-        return;
-      }
-
-      const result = nfa.run(sequence);
-
-      this.displayTestResult(result, sequence);
-
-      // Update trace highlighting based on toggle
-      if (this.elements.showTraceToggle.checked) {
-        this.visualizer.highlightTrace(result.trace);
+      if (this.elements.showTraceToggle.checked && result.highlights) {
+        this.visualizer.highlightExecution(result.highlights);
       } else {
         this.visualizer.clearHighlight();
       }
 
     } catch (e) {
-      this.showTestResult(`Error: ${e.message}`, false);
+      this.showTestResult('', false);
+      this.elements.testResult.className = 'test-result';
+      this.showTestError(e?.message ?? String(e));
       this.visualizer.clearHighlight();
     }
-  }
-
-  /**
-   * Parse user input string into a sequence of symbol arrays.
-   * Each character becomes a single-element array.
-   * [charClass] syntax expands to array of matching symbols.
-   * @returns {Array<string[]>} Array of symbol arrays
-   */
-  parseInputSequence(inputStr) {
-    const result = [];
-    let i = 0;
-
-    while (i < inputStr.length) {
-      if (inputStr[i] === '[') {
-        // Find matching ]
-        const end = inputStr.indexOf(']', i + 1);
-        if (end === -1) {
-          throw new Error('Unclosed character class [');
-        }
-        const charClass = inputStr.slice(i + 1, end);
-        if (charClass.length === 0) {
-          throw new Error('Empty character class []');
-        }
-        result.push(expandSymbolClass(charClass));
-        i = end + 1;
-      } else {
-        result.push([inputStr[i]]);
-        i++;
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Format a parsed input sequence for display
-   */
-  formatInputSequence(sequence) {
-    if (sequence.length === 0) return '(empty)';
-    return sequence.map(symbols =>
-      symbols.length === 1 ? symbols[0] : `[${compactSymbolLabel(symbols)}]`
-    ).join('');
-  }
-
-  /**
-   * Display the test result in the UI
-   */
-  displayTestResult(result, sequence) {
-    const lastStep = result.trace[result.trace.length - 1];
-
-    if (result.accepted) {
-      this.showTestResult(`✓ Accepted`, true);
-    } else {
-      // Dead end if all remaining states are dead
-      const deadTransform = this.view.getDeadStates();
-      const allDead = lastStep.states.every(id => deadTransform.isDeleted(id));
-      const reason = allDead ? 'Dead End' : 'Rejected';
-      this.showTestResult(`✗ ${reason}`, false);
-    }
-  }
-
-  /**
-   * Count unique canonical states from a list of state IDs
-   */
-  countCanonicalStates(stateIds) {
-    if (!this.view) return stateIds.length;
-    const canonical = new Set();
-    for (const id of stateIds) {
-      const mapped = this.view.getCanonical(id);
-      if (mapped !== -1) canonical.add(mapped);
-    }
-    return canonical.size;
   }
 
   /**
@@ -1224,6 +1171,15 @@ class App {
 
   hideError() {
     this.elements.errorDisplay.classList.add('hidden');
+  }
+
+  showTestError(message) {
+    this.elements.testErrorDisplay.textContent = message;
+    this.elements.testErrorDisplay.classList.remove('hidden');
+  }
+
+  hideTestError() {
+    this.elements.testErrorDisplay.classList.add('hidden');
   }
 
 } // End of App class

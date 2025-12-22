@@ -52,11 +52,11 @@ describe('DFABuilder', () => {
     // We can check by running some inputs
 
     // Test acceptance
-    assert.strictEqual(dfa.run([['a'], ['b'], ['b']]).accepted, true);
-    assert.strictEqual(dfa.run([['a'], ['a'], ['b'], ['b']]).accepted, true);
-    assert.strictEqual(dfa.run([['b'], ['a'], ['b'], ['b']]).accepted, true);
-    assert.strictEqual(dfa.run([['a'], ['b']]).accepted, false);
-    assert.strictEqual(dfa.run([['a'], ['a'], ['b']]).accepted, false);
+    assert(dfa.matches([['a'], ['b'], ['b']]));
+    assert(dfa.matches([['a'], ['a'], ['b'], ['b']]));
+    assert(dfa.matches([['b'], ['a'], ['b'], ['b']]));
+    assert(!dfa.matches([['a'], ['b']]));
+    assert(!dfa.matches([['a'], ['a'], ['b']]));
 
     // Check determinism (at most 1 transition per symbol)
     for (let i = 0; i < dfa.numStates(); i++) {
@@ -93,8 +93,8 @@ describe('DFABuilder', () => {
     // Start state of DFA corresponds to {0, 1}
     // Transition on 'a' goes to {2}
 
-    assert.strictEqual(dfa.run([['a']]).accepted, true);
-    assert.strictEqual(dfa.run([]).accepted, false);
+    assert(dfa.matches([['a']]));
+    assert(!dfa.matches([]));
   });
 
   it('aborts subset construction when maxStates is exceeded', () => {
