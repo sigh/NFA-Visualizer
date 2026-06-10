@@ -306,6 +306,25 @@ export function compactSymbolLabel(symbols) {
 }
 
 // ============================================
+// Named Layout Configurations
+// ============================================
+
+const NAMED_LAYOUTS = {
+  dagre: {
+    name: 'dagre',
+    rankDir: 'TB',
+    nodeSep: 100,
+    rankSep: 80,
+  },
+  circle: {
+    name: 'circle',
+    padding: 50,
+    avoidOverlap: true,
+    startAngle: 3 / 2 * Math.PI,
+  },
+};
+
+// ============================================
 // NFAVisualizer Class
 // ============================================
 
@@ -691,16 +710,41 @@ export class NFAVisualizer {
   }
 
   /**
+   * Apply a named layout to the current graph, then capture positions.
+   * @param {string} layoutName - Key from NAMED_LAYOUTS
+   * @param {boolean} animate
+   */
+  applyLayout(layoutName, animate = false) {
+    if (!this.cy) return;
+    const options = { ...NAMED_LAYOUTS[layoutName], animate };
+    const layout = this.cy.layout(options);
+    layout.on('layoutstop', () => {
+      this.cy.fit(50);
+      if (this.view?.layoutState) {
+        this.captureLayout(this.view.layoutState);
+      }
+    });
+    layout.run();
+  }
+
+  /**
+   * Reset to the default dagre layout, discarding any stored positions.
+   * @param {boolean} animate
+   */
+  resetLayout(animate = false) {
+    if (this.view?.layoutState) {
+      this.view.layoutState.positions = new Map();
+      this.view.layoutState.viewport = null;
+    }
+    this.applyLayout('dagre', animate);
+  }
+
+  /**
    * Get layout options for the graph
    * @returns {Object} Layout options
    */
   getLayoutOptions() {
-    return {
-      name: 'dagre',
-      rankDir: 'TB',
-      nodeSep: 100,
-      rankSep: 80,
-    };
+    return { ...NAMED_LAYOUTS.dagre };
   }
 
   /**

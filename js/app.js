@@ -110,6 +110,7 @@ class App {
       // Actions
       buildBtn: document.getElementById('build-btn'),
       refreshLayoutBtn: document.getElementById('refresh-layout-btn'),
+      circularLayoutBtn: document.getElementById('circular-layout-btn'),
 
       // Output
       errorDisplay: document.getElementById('error-display'),
@@ -301,7 +302,12 @@ class App {
     this.elements.buildBtn.addEventListener('click', () => this.handleBuild());
     this.elements.refreshLayoutBtn.addEventListener('click', () => {
       if (this.visualizer) {
-        this.visualizer.runLayout(/* animate= */ true);
+        this.visualizer.resetLayout(/* animate= */ true);
+      }
+    });
+    this.elements.circularLayoutBtn.addEventListener('click', () => {
+      if (this.visualizer) {
+        this.visualizer.applyLayout('circle', /* animate= */ true);
       }
     });
 
