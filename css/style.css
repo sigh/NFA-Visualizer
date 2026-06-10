@@ -182,11 +182,11 @@ header h1 {
   border-color: var(--color-primary);
 }
 
-.header-actions {
+.layout-options {
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 4px;
+  gap: 10px;
 }
 
 .icon-btn {
@@ -204,6 +204,10 @@ header h1 {
 .icon-btn:hover {
   background: var(--color-surface-raised);
   color: var(--color-text);
+}
+
+.icon-btn.active {
+  color: var(--color-primary);
 }
 
 .icon-btn:active {
@@ -276,6 +280,7 @@ header h1 {
   overflow: hidden;
   border-right: none;
 }
+
 .config-collapsed .panel-config .panel-header,
 .config-collapsed .panel-config .input-section,
 .config-collapsed .panel-config .button-row {

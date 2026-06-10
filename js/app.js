@@ -57,7 +57,8 @@ const STORAGE_KEYS = {
   regex: 'nfa-regex',
   regexSymbols: 'nfa-regex-symbols',
   inputMode: 'nfa-input-mode',
-  testInput: 'nfa-test-input'
+  testInput: 'nfa-test-input',
+  layout: 'nfa-layout'
 };
 
 /** Input modes enum */
@@ -153,6 +154,7 @@ class App {
     this.isRestoring = false;
     this.mode = MODES.SPLIT;
     this.activePipeline = PIPELINE_MODES.NFA;
+    this.activeLayout = 'dagre';
 
     // CodeJar editor instances
     this.editors = {
@@ -292,6 +294,13 @@ class App {
       this.elements.examplesSelect.appendChild(option);
     });
 
+    // Layout button registry (order matches DOM order)
+    this.layoutButtons = [
+      { name: 'breadthfirst', el: this.elements.bfsLayoutBtn },
+      { name: 'circle', el: this.elements.circularLayoutBtn },
+      { name: 'dagre', el: this.elements.refreshLayoutBtn },
+    ];
+
     // Restore saved inputs from sessionStorage
     this.restoreFromStorage();
 
@@ -301,21 +310,14 @@ class App {
     this.elements.tabUnified.addEventListener('click', () => this.switchMode(MODES.UNIFIED));
     this.elements.tabRegex.addEventListener('click', () => this.switchMode(MODES.REGEX));
     this.elements.buildBtn.addEventListener('click', () => this.handleBuild());
-    this.elements.refreshLayoutBtn.addEventListener('click', () => {
-      if (this.visualizer) {
-        this.visualizer.resetLayout(/* animate= */ true);
-      }
-    });
-    this.elements.bfsLayoutBtn.addEventListener('click', () => {
-      if (this.visualizer) {
-        this.visualizer.applyLayout('breadthfirst', /* animate= */ true);
-      }
-    });
-    this.elements.circularLayoutBtn.addEventListener('click', () => {
-      if (this.visualizer) {
-        this.visualizer.applyLayout('circle', /* animate= */ true);
-      }
-    });
+
+    for (const { name, el } of this.layoutButtons) {
+      el.addEventListener('click', () => {
+        if (!this.visualizer) return;
+        this.setActiveLayout(name);
+        this.visualizer.applyLayout(name, /* animate= */ true);
+      });
+    }
 
     // Auto-update test on input change
     this.elements.testInput.addEventListener('input', () => {
@@ -417,6 +419,7 @@ class App {
     sessionStorage.setItem(STORAGE_KEYS.regexSymbols, this.editors.regexSymbols.toString());
 
     sessionStorage.setItem(STORAGE_KEYS.inputMode, this.mode);
+    sessionStorage.setItem(STORAGE_KEYS.layout, this.activeLayout);
 
     sessionStorage.setItem(STORAGE_KEYS.testInput, this.elements.testInput.value);
   }
@@ -451,7 +454,20 @@ class App {
     if (regexSymbols !== null) this.editors.regexSymbols.updateCode(regexSymbols);
     if (testInput !== null) this.elements.testInput.value = testInput;
 
+    const layout = sessionStorage.getItem(STORAGE_KEYS.layout);
+    if (layout) this.setActiveLayout(layout);
+
     this.isRestoring = false;
+  }
+
+  /**
+   * Set the active layout, update button states, and persist.
+   * @param {string} name - Key from NAMED_LAYOUTS
+   */
+  setActiveLayout(name) {
+    this.activeLayout = name;
+    this.layoutButtons.forEach(({ name: n, el }) => el.classList.toggle('active', n === name));
+    this.saveToStorage();
   }
 
   /**
@@ -634,6 +650,10 @@ class App {
     this.updatePipelineUI(this.elements.dfaSlider, this.elements.dfaLabels);
 
     this.updateTransformAndRender();
+
+    if (this.activeLayout !== 'dagre') {
+      this.visualizer.applyLayout(this.activeLayout);
+    }
   }
 
   getDfaPipelineAtNfaStep(nfaStep) {
