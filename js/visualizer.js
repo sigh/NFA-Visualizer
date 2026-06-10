@@ -309,6 +309,7 @@ export function compactSymbolLabel(symbols) {
 // Named Layout Configurations
 // ============================================
 
+// Layout configs: plain object, or function (cy, view) => object for dynamic options.
 const NAMED_LAYOUTS = {
   dagre: {
     name: 'dagre',
@@ -321,6 +322,18 @@ const NAMED_LAYOUTS = {
     padding: 50,
     avoidOverlap: true,
     startAngle: 3 / 2 * Math.PI,
+  },
+  breadthfirst: (cy, view) => {
+    const startIds = view
+      ? view.getStateInfo().filter(s => s.isStart && view.isCanonical(s.id)).map(s => `#s${s.id}`)
+      : [];
+    return {
+      name: 'breadthfirst',
+      directed: true,
+      roots: startIds.length ? cy.$(startIds.join(', ')) : undefined,
+      padding: 50,
+      spacingFactor: 1.5,
+    };
   },
 };
 
@@ -716,7 +729,9 @@ export class NFAVisualizer {
    */
   applyLayout(layoutName, animate = false) {
     if (!this.cy) return;
-    const options = { ...NAMED_LAYOUTS[layoutName], animate };
+    const config = NAMED_LAYOUTS[layoutName];
+    const base = typeof config === 'function' ? config(this.cy, this.view) : config;
+    const options = { ...base, animate };
     const layout = this.cy.layout(options);
     layout.on('layoutstop', () => {
       this.cy.fit(50);
